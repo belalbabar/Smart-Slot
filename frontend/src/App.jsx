@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Login from "./pages/Login";
+import Users from "./pages/Users";
+import Layout from "./Layout";
 
-function App() {
-  const [msg, setMsg] = useState("Loading...");
-
-  useEffect(() => {
-    fetch("http://127.0.0.1:8000/")
-      .then((res) => res.json())
-      .then((data) => setMsg(data.message))
-      .catch(() => setMsg("Backend not reachable"));
-  }, []);
-
-  return <h1>{msg}</h1>;
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route element={<Layout />}>
+          <Route path="/users" element={<Users />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/users" />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
-
-export default App;
