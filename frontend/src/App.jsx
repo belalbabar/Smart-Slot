@@ -1,3 +1,4 @@
+
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Users from "./pages/Users";
@@ -10,6 +11,8 @@ import AdminGate from "./pages/AdminGate";
 import { Rooms } from "./pages/Resources";
 import Layout from "./Layout";
 import AdminLayout from "./AdminLayout";
+import GeneratePage from "./pages/GeneratePage";
+import TimetablePage from "./pages/TimetablePage";
 
 export default function App() {
   return (
@@ -28,9 +31,25 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/sessions/:id" element={<SessionPage />} />
-          <Route path="/sessions/:id/degrees/:degreeId" element={<DegreePage />} />
-          <Route path="/sessions/:id/degrees/:degreeId/sections/:sectionId" element={<SectionPage />} />
+          <Route
+            path="/sessions/:id/degrees/:degreeId"
+            element={<DegreePage />}
+          />
+          <Route
+            path="/sessions/:id/degrees/:degreeId/sections/:sectionId"
+            element={<SectionPage />}
+          />
+
+          <Route
+            path="/sessions/:id/degrees/:degreeId/sections/:sectionId/generate"
+            element={<GeneratePage />}
+          />
+          <Route
+            path="/timetables/:tid"
+            element={<TimetablePage />}
+          />
         </Route>
+
         <Route path="*" element={<Navigate to="/sessions" />} />
       </Routes>
     </BrowserRouter>

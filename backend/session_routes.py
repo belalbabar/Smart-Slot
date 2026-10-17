@@ -279,3 +279,43 @@ def teacher_workload(db: Session = Depends(get_db)):
                     "course_count": len(classes), "weekly_hours": hours,
                     "classes": classes})
     return out
+# ---------- Course list (dropdown ke liye) ----------
+@router.get("/courses")
+def list_courses(db: Session = Depends(get_db)):
+    return [{"id": c.id, "code": c.code, "name": c.name, "type": c.type,
+             "credit_hours": c.credit_hours, "weekly_pattern": c.weekly_pattern,
+             "lab_kind": c.lab_kind}
+            for c in db.query(Course).order_by(Course.code).all()]
+
+
+# ---------- Section archive (permanent delete nahi) ----------
+@router.post("/sections/{section_id}/archive")
+def archive_section(section_id: int, db: Session = Depends(get_db)):
+    sec = db.get(Section, section_id)
+    if not sec:
+        raise HTTPException(404, "Section not found")
+    sec.status = "archived"
+    sec.archived_at = datetime.utcnow()
+    db.commit()
+    return {"archived": section_id}
+
+
+# ---------- Ek section ke courses doosre section mein copy ----------
+@router.post("/sections/{section_id}/copy-from/{source_id}")
+def copy_section_courses(section_id: int, source_id: int,
+                         db: Session = Depends(get_db)):
+    if section_id == source_id:
+        raise HTTPException(400, "Choose a different section")
+    if not db.get(Section, section_id) or not db.get(Section, source_id):
+        raise HTTPException(404, "Section not found")
+    have = {sc.course_id for sc in
+            db.query(SectionCourse).filter_by(section_id=section_id).all()}
+    n = 0
+    for sc in db.query(SectionCourse).filter_by(section_id=source_id).all():
+        if sc.course_id in have:
+            continue
+        db.add(SectionCourse(section_id=section_id, course_id=sc.course_id,
+                             teacher_id=sc.teacher_id))
+        n += 1
+    db.commit()
+    return {"copied": n}

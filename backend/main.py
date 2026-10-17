@@ -8,6 +8,7 @@ from auth import (hash_password, verify_password, create_token,
                   get_current_admin)
 from crud_routes import router
 from session_routes import router as session_router
+from timetable_routes import router as timetable_router
 
 app = FastAPI(title="SmartSlot")
 
@@ -20,6 +21,7 @@ app.add_middleware(
 
 app.include_router(router)
 app.include_router(session_router)
+app.include_router(timetable_router)
 
 class LoginData(BaseModel):
     username: str

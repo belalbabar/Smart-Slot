@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import (Column, Integer, String, Boolean, DateTime,
-                        ForeignKey, Time)
+                        ForeignKey, Time, Text)
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -81,6 +81,8 @@ class Timetable(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="active")
     archived_at = Column(DateTime, nullable=True)
+    settings = Column(Text, nullable=True)
+    section_id = Column(Integer, ForeignKey("sections.id"), nullable=True)
 
 
 class TimetableEntry(Base):

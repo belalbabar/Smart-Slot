@@ -32,6 +32,9 @@ export default function AdminGate() {
 
   return (
     <div className="login-wrap">
+      <button type="button" className="back-btn" onClick={() => navigate("/sessions")}>
+        ← Back
+      </button>
       <form className="card" onSubmit={unlock}>
         <h1>Admin Panel</h1>
         <p className="muted">Enter admin credentials to continue</p>

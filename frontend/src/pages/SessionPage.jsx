@@ -19,9 +19,33 @@ export default function SessionPage() {
       setName("");
     });
   };
-  const removeDegree = (d) =>
-    window.confirm(`Remove ${d.name} from this session?`) &&
-    run(() => api(`/sessions/${id}/degrees/${d.id}`, { method: "DELETE" }));
+
+  const removeDegree = (d) => {
+    let toRemove = d.sections;
+    if (d.sections.length > 1) {
+      const names = d.sections.map((s) => s.name);
+      const ans = window.prompt(
+        `Which section to remove from ${d.name}?\nType one of: ${names.join(", ")} or ALL`
+      );
+      if (!ans) return;
+      const a = ans.trim().toUpperCase();
+      if (a !== "ALL") {
+        toRemove = d.sections.filter((s) => s.name === a);
+        if (toRemove.length === 0) { alert("Section not found"); return; }
+      }
+    } else if (!window.confirm(`Remove ${d.name}${d.sections.length ? " and its section" : ""}?`)) {
+      return;
+    }
+    const removeAll = toRemove.length === d.sections.length;
+    run(async () => {
+      for (const s of toRemove) {
+        await api(`/sections/${s.id}/archive`, { method: "POST" });
+      }
+      if (removeAll) {
+        await api(`/sessions/${id}/degrees/${d.id}`, { method: "DELETE" });
+      }
+    });
+  };
 
   return (
     <div>
