@@ -2,11 +2,12 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
 from database import get_db
 from models import User
 from auth import (hash_password, verify_password, create_token,
                   get_current_admin)
+from crud_routes import router
+from session_routes import router as session_router
 
 app = FastAPI(title="SmartSlot")
 
@@ -17,6 +18,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(router)
+app.include_router(session_router)
 
 class LoginData(BaseModel):
     username: str
