@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
+const RETURN_KEYS = ["token", "role", "username", "displayName", "teacherId"];
+
 export default function AdminGate() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -18,15 +20,25 @@ export default function AdminGate() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
-      if (!res.ok) {
-        setError("Wrong username or password");
-        return;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "Wrong username or password");
+      if (!["admin", "hod"].includes(data.role)) {
+        throw new Error("Admin Panel sirf HOD account se khulta hai");
       }
-      sessionStorage.setItem("adminUnlocked", "1");
-      sessionStorage.setItem("adminName", username);
-      navigate("/admin/teachers");
-    } catch {
-      setError("Server not reachable");
+
+      const returnState = Object.fromEntries(
+        RETURN_KEYS.map((key) => [key, localStorage.getItem(key)])
+      );
+      sessionStorage.setItem("adminReturnState", JSON.stringify(returnState));
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("role", data.role);
+      localStorage.setItem("username", data.username);
+      localStorage.setItem("displayName", data.display_name);
+      localStorage.setItem("teacherId", data.teacher_id ?? "");
+      sessionStorage.setItem("adminGate", "1");
+      navigate("/admin/teachers", { replace: true });
+    } catch (err) {
+      setError(err.message || "Server not reachable");
     }
   }
 

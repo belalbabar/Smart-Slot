@@ -10,7 +10,10 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    role = Column(String, default="admin")  
+    role = Column(String, default="hod")
+    teacher_id = Column(Integer, ForeignKey("teachers.id"), nullable=True)
+    display_name = Column(String, nullable=True)
+    teacher = relationship("Teacher")
 
 
 class AcademicSession(Base):
@@ -71,6 +74,7 @@ class SectionCourse(Base):
     section_id = Column(Integer, ForeignKey("sections.id"))
     course_id = Column(Integer, ForeignKey("courses.id"))
     teacher_id = Column(Integer, ForeignKey("teachers.id"))
+    weekly_pattern = Column(String, nullable=True)
 
 
 class Timetable(Base):

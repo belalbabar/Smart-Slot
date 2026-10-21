@@ -48,3 +48,15 @@ def get_current_admin(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+def get_current_hod(user: User = Depends(get_current_admin)) -> User:
+    if user.role not in ("admin", "hod"):
+        raise HTTPException(status_code=403, detail="HOD access required")
+    return user
+
+
+def get_current_timetable_user(user: User = Depends(get_current_admin)) -> User:
+    if user.role not in ("admin", "hod", "timetable"):
+        raise HTTPException(status_code=403, detail="Timetable access required")
+    return user

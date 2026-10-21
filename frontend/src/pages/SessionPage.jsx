@@ -2,11 +2,13 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useOverview } from "../useOverview";
+import HodPasswordDialog from "../HodPasswordDialog";
 
 export default function SessionPage() {
   const { id } = useParams();
   const { data, error, run } = useOverview(id);
   const [name, setName] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   if (!data) return <p>{error || "Loading..."}</p>;
 
@@ -37,12 +39,26 @@ export default function SessionPage() {
       return;
     }
     const removeAll = toRemove.length === d.sections.length;
+    if (toRemove.length === 0) return;
+    if (!window.confirm(
+      `Permanently delete ${toRemove.map((s) => `Section ${s.name}`).join(", ")}? This also deletes their courses and timetable history.`
+    )) return;
+    setPendingDelete({ toRemove, removeAll, degree: d });
+  };
+
+  async function confirmDelete({ admin_username, password }) {
+    const pending = pendingDelete;
+    setPendingDelete(null);
+    if (!pending) return;
     run(async () => {
-      for (const s of toRemove) {
-        await api(`/sections/${s.id}/archive`, { method: "POST" });
+      for (const s of pending.toRemove) {
+        await api(`/sections/${s.id}`, {
+          method: "DELETE",
+          body: JSON.stringify({ admin_username, password }),
+        });
       }
-      if (removeAll) {
-        await api(`/sessions/${id}/degrees/${d.id}`, { method: "DELETE" });
+      if (pending.removeAll) {
+        await api(`/sessions/${id}/degrees/${pending.degree.id}`, { method: "DELETE" });
       }
     });
   };
@@ -63,11 +79,19 @@ export default function SessionPage() {
             <tr key={d.id}>
               <td><Link to={`/sessions/${id}/degrees/${d.id}`}>{d.name}</Link></td>
               <td>{d.sections.map((s) => s.name).join(", ") || "-"}</td>
-              <td><button className="danger" onClick={() => removeDegree(d)}>Remove</button></td>
+              <td>
+                <button className="danger" onClick={() => removeDegree(d)}>
+                  Delete section(s)
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+      {pendingDelete && (
+        <HodPasswordDialog action="Delete section(s)"
+          onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />
+      )}
     </div>
   );
 }

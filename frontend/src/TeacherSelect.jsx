@@ -1,6 +1,8 @@
 import { api } from "./api";
 
 export default function TeacherSelect({ value, teachers, onChange, onCreated }) {
+  const canCreate = ["admin", "hod"].includes(localStorage.getItem("role"));
+
   async function handle(v) {
     if (v === "__new__") {
       const name = window.prompt("Teacher name:");
@@ -23,7 +25,7 @@ export default function TeacherSelect({ value, teachers, onChange, onCreated }) 
     <select value={value ?? ""} onChange={(e) => handle(e.target.value)}>
       <option value="">Not available yet</option>
       {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-      <option value="__new__">+ New teacher...</option>
+      {canCreate && <option value="__new__">+ New teacher...</option>}
     </select>
   );
 }

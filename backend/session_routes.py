@@ -1,14 +1,15 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db
-from auth import get_current_admin
+from auth import get_current_hod, get_current_timetable_user, verify_password
 from models import (AcademicSession, Degree, SessionDegree, Section,
-                    Course, SectionCourse, Teacher)
+                    Course, SectionCourse, Teacher, User, Timetable,
+                    TimetableEntry, TeacherUnavailability)
 
-router = APIRouter(dependencies=[Depends(get_current_admin)])
+router = APIRouter(dependencies=[Depends(get_current_timetable_user)])
 
 
 def get_session_or_404(db, session_id):
@@ -115,7 +116,7 @@ def overview(session_id: int, db: Session = Depends(get_db)):
                     "id": sc.id, "code": c.code, "name": c.name, "type": c.type,
                     "lab_kind": c.lab_kind,
                     "credit_hours": c.credit_hours,
-                    "weekly_pattern": c.weekly_pattern,
+                    "weekly_pattern": sc.weekly_pattern or c.weekly_pattern,
                     "teacher_id": sc.teacher_id,
                     "teacher_name": teachers.get(sc.teacher_id),
                 } for sc, c in rows],
@@ -173,6 +174,70 @@ def add_section(session_id: int, degree_id: int, data: dict,
     return {"id": sec.id, "name": sec.name}
 
 
+@router.put("/sections/{section_id}")
+def rename_section(section_id: int, data: dict, db: Session = Depends(get_db)):
+    section = db.get(Section, section_id)
+    if not section or section.status != "active":
+        raise HTTPException(404, "Section not found")
+    name = clean_name(data).upper()
+    duplicate = db.query(Section).filter(
+        Section.session_id == section.session_id,
+        Section.degree_id == section.degree_id,
+        Section.name == name,
+        Section.status == "active",
+        Section.id != section.id,
+    ).first()
+    if duplicate:
+        raise HTTPException(400, "Section already exists")
+    section.name = name
+    db.commit()
+    return {"id": section.id, "name": section.name}
+
+
+@router.delete("/sections/{section_id}")
+def delete_section(section_id: int, data: dict, db: Session = Depends(get_db)):
+    section = db.get(Section, section_id)
+    if not section:
+        raise HTTPException(404, "Section not found")
+    admin_username = (data.get("admin_username") or "").strip()
+    password = data.get("password")
+    admin = db.query(User).filter(
+        User.username == admin_username,
+        User.role.in_(("admin", "hod")),
+    ).first()
+    if not admin or not isinstance(password, str) or not verify_password(
+            password, admin.password_hash):
+        raise HTTPException(403, "HOD username or password is incorrect")
+
+    section_course_ids = [row[0] for row in db.query(SectionCourse.id)
+                          .filter_by(section_id=section_id).all()]
+    timetable_ids = [row[0] for row in db.query(Timetable.id)
+                     .filter(Timetable.section_id == section_id).all()]
+    if timetable_ids:
+        db.query(TeacherUnavailability).filter(
+            TeacherUnavailability.timetable_id.in_(timetable_ids)
+        ).delete(synchronize_session=False)
+    entry_filter = []
+    if timetable_ids:
+        entry_filter.append(TimetableEntry.timetable_id.in_(timetable_ids))
+    if section_course_ids:
+        entry_filter.append(
+            TimetableEntry.section_course_id.in_(section_course_ids))
+    if entry_filter:
+        db.query(TimetableEntry).filter(
+            or_(*entry_filter)
+        ).delete(synchronize_session=False)
+    if timetable_ids:
+        db.query(Timetable).filter(
+            Timetable.id.in_(timetable_ids)
+        ).delete(synchronize_session=False)
+    db.query(SectionCourse).filter_by(section_id=section_id).delete(
+        synchronize_session=False)
+    db.delete(section)
+    db.commit()
+    return {"deleted": section_id}
+
+
 # ---------- Courses (with teacher) inside a section ----------
 @router.post("/sections/{section_id}/courses")
 def add_course(section_id: int, data: dict, db: Session = Depends(get_db)):
@@ -195,6 +260,8 @@ def add_course(section_id: int, data: dict, db: Session = Depends(get_db)):
     pattern = "3" if ctype == "lab" else (data.get("weekly_pattern") or "").strip()
     if not pattern:
         raise HTTPException(400, "weekly_pattern is required")
+    if ctype == "theory" and pattern not in ("3", "2+1", "1+1+1", "2", "1"):
+        raise HTTPException(400, "Choose a valid weekly pattern")
     teacher_id = teacher_or_none(db, data.get("teacher_id"))
 
     course = db.query(Course).filter(func.lower(Course.code) == code.lower()).first()
@@ -206,8 +273,11 @@ def add_course(section_id: int, data: dict, db: Session = Depends(get_db)):
     if db.query(SectionCourse).filter_by(section_id=section_id,
                                          course_id=course.id).first():
         raise HTTPException(400, "Course already added in this section")
+    pattern_override = (
+        pattern if ctype == "theory" and pattern != course.weekly_pattern else None
+    )
     sc = SectionCourse(section_id=section_id, course_id=course.id,
-                       teacher_id=teacher_id)
+                       teacher_id=teacher_id, weekly_pattern=pattern_override)
     db.add(sc)
     db.commit()
     return {"id": sc.id}
@@ -218,9 +288,19 @@ def set_teacher(sc_id: int, data: dict, db: Session = Depends(get_db)):
     sc = db.get(SectionCourse, sc_id)
     if not sc:
         raise HTTPException(404, "Not found")
-    sc.teacher_id = teacher_or_none(db, data.get("teacher_id"))
+    if "teacher_id" in data:
+        sc.teacher_id = teacher_or_none(db, data.get("teacher_id"))
+    if "weekly_pattern" in data:
+        pattern = (data.get("weekly_pattern") or "").strip()
+        course = db.get(Course, sc.course_id)
+        if course.type != "theory" or pattern not in (
+                "3", "2+1", "1+1+1", "2", "1"):
+            raise HTTPException(400, "Choose a valid theory weekly pattern")
+        sc.weekly_pattern = pattern
     db.commit()
-    return {"id": sc.id, "teacher_id": sc.teacher_id}
+    course = db.get(Course, sc.course_id)
+    return {"id": sc.id, "teacher_id": sc.teacher_id,
+            "weekly_pattern": sc.weekly_pattern or course.weekly_pattern}
 
 
 @router.delete("/section-courses/{sc_id}")
@@ -255,7 +335,8 @@ def tree(db: Session = Depends(get_db)):
 
 # ---------- Teacher workload ----------
 @router.get("/teacher-workload")
-def teacher_workload(db: Session = Depends(get_db)):
+def teacher_workload(db: Session = Depends(get_db),
+                     admin: User = Depends(get_current_hod)):
     out = []
     for t in db.query(Teacher).order_by(Teacher.name).all():
         rows = (db.query(SectionCourse, Course, Section, AcademicSession, Degree)
@@ -283,12 +364,12 @@ def teacher_workload(db: Session = Depends(get_db)):
 @router.get("/courses")
 def list_courses(db: Session = Depends(get_db)):
     return [{"id": c.id, "code": c.code, "name": c.name, "type": c.type,
-             "credit_hours": c.credit_hours, "weekly_pattern": c.weekly_pattern,
+             "credit_hours": c.credit_hours,              "weekly_pattern": sc.weekly_pattern or c.weekly_pattern,
              "lab_kind": c.lab_kind}
             for c in db.query(Course).order_by(Course.code).all()]
 
 
-# ---------- Section archive (permanent delete nahi) ----------
+# ---------- Section archive ----------
 @router.post("/sections/{section_id}/archive")
 def archive_section(section_id: int, db: Session = Depends(get_db)):
     sec = db.get(Section, section_id)
@@ -315,7 +396,8 @@ def copy_section_courses(section_id: int, source_id: int,
         if sc.course_id in have:
             continue
         db.add(SectionCourse(section_id=section_id, course_id=sc.course_id,
-                             teacher_id=sc.teacher_id))
+                             teacher_id=sc.teacher_id,
+                             weekly_pattern=sc.weekly_pattern))
         n += 1
     db.commit()
     return {"copied": n}

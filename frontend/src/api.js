@@ -11,7 +11,11 @@ export async function api(path, options = {}) {
     },
   });
   if (res.status === 401) {
-    localStorage.removeItem("token");
+    for (const key of ["token", "role", "username", "displayName", "teacherId"]) {
+      localStorage.removeItem(key);
+    }
+    sessionStorage.removeItem("adminGate");
+    sessionStorage.removeItem("adminReturnState");
     window.location.href = "/login";
     throw new Error("Session expired");
   }

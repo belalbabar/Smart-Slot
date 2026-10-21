@@ -3,14 +3,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from database import get_db
-from auth import get_current_admin
-from models import Degree, Teacher, Room, Course, AcademicSession
+from auth import get_current_admin, get_current_hod
+from models import Degree, Teacher, Room, Course, AcademicSession, User
 
 # is router ke saare routes par login zaroori hai
 router = APIRouter(dependencies=[Depends(get_current_admin)])
 
 
-def make_crud(path, Model, fields, required, allow_delete=True, validate=None):
+def make_crud(path, Model, fields, required, allow_delete=True, validate=None,
+              write_access=get_current_admin, read_access=get_current_admin):
     def clean(data: dict):
         out = {}
         for f in fields:
@@ -33,11 +34,13 @@ def make_crud(path, Model, fields, required, allow_delete=True, validate=None):
         return d
 
     @router.get(f"/{path}", name=f"list_{path}")
-    def list_items(db: Session = Depends(get_db)):
+    def list_items(db: Session = Depends(get_db),
+                   user: User = Depends(read_access)):
         return [to_dict(i) for i in db.query(Model).order_by(Model.id).all()]
 
     @router.post(f"/{path}", name=f"create_{path}")
-    def create_item(data: dict, db: Session = Depends(get_db)):
+    def create_item(data: dict, db: Session = Depends(get_db),
+                    user: User = Depends(write_access)):
         obj = Model(**clean(data))
         db.add(obj)
         try:
@@ -48,7 +51,8 @@ def make_crud(path, Model, fields, required, allow_delete=True, validate=None):
         return to_dict(obj)
 
     @router.put(f"/{path}/{{item_id}}", name=f"update_{path}")
-    def update_item(item_id: int, data: dict, db: Session = Depends(get_db)):
+    def update_item(item_id: int, data: dict, db: Session = Depends(get_db),
+                    user: User = Depends(write_access)):
         obj = db.get(Model, item_id)
         if not obj:
             raise HTTPException(404, "Not found")
@@ -63,7 +67,8 @@ def make_crud(path, Model, fields, required, allow_delete=True, validate=None):
 
     if allow_delete:
         @router.delete(f"/{path}/{{item_id}}", name=f"delete_{path}")
-        def delete_item(item_id: int, db: Session = Depends(get_db)):
+        def delete_item(item_id: int, db: Session = Depends(get_db),
+                        user: User = Depends(write_access)):
             obj = db.get(Model, item_id)
             if not obj:
                 raise HTTPException(404, "Not found")
@@ -86,6 +91,7 @@ def check_room(d):
         d["lab_kind"] = None
 
 
-make_crud("teachers", Teacher, ["name", "email"], ["name"])
+make_crud("teachers", Teacher, ["name", "email"], ["name"],
+          write_access=get_current_hod)
 make_crud("rooms", Room, ["name", "type", "lab_kind"], ["name", "type"],
-          validate=check_room)
+          validate=check_room, read_access=get_current_hod)

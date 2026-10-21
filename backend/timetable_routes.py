@@ -6,23 +6,14 @@ from ortools.sat.python import cp_model
 from datetime import time, datetime
 
 from database import get_db
-from auth import get_current_admin
+from auth import get_current_hod, get_current_timetable_user
 from models import (AcademicSession, Section, SectionCourse, Course, Teacher,
                     Room, Degree, Timetable, TimetableEntry,
-                    TeacherUnavailability)
+                    TeacherUnavailability, User)
 
-router = APIRouter(dependencies=[Depends(get_current_admin)])
+router = APIRouter(dependencies=[Depends(get_current_timetable_user)])
 
 ALL_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-
-
-def blocks_of(course):
-    if course.type == "lab":
-        return [3]
-    try:
-        return [int(x) for x in course.weekly_pattern.split("+")]
-    except Exception:
-        raise HTTPException(400, f"Invalid weekly pattern for {course.code}")
 
 
 def to_int(data, key, default):
@@ -95,6 +86,8 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
     placements = []
     sec_busy, teacher_busy, room_busy, day_vars = {}, {}, {}, {}
     day_load = {d: [] for d in days}
+    morning_by_day = {d: [] for d in days}
+    afternoon_by_day = {d: [] for d in days}
     morning, afternoon = [], []
 
     for sc, c in items:
@@ -103,7 +96,17 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
             what = f"{c.lab_kind} lab" if c.type == "lab" else "theory room"
             raise HTTPException(400, f"No {what} available for {c.code}. "
                                      f"Add it in Admin > Rooms & Labs.")
-        for length in blocks_of(c):
+        effective_pattern = sc.weekly_pattern or c.weekly_pattern
+        if c.type == "lab":
+            blocks = [3]
+        else:
+            try:
+                blocks = [int(x) for x in effective_pattern.split("+")]
+            except (AttributeError, ValueError):
+                raise HTTPException(400, f"Invalid weekly pattern for {c.code}")
+            if effective_pattern not in ("3", "2+1", "1+1+1", "2", "1"):
+                raise HTTPException(400, f"Invalid weekly pattern for {c.code}")
+        for length in blocks:
             opts = []
             for day in days:
                 if sc.teacher_id and (sc.teacher_id, day) in unavail:
@@ -122,7 +125,12 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
                         placements.append((v, sc, length, day, s, r))
                         day_vars.setdefault((sc.id, day), []).append(v)
                         day_load[day].append(length * v)
-                        (morning if s < ls else afternoon).append(length * v)
+                        if s < ls:
+                            morning.append(length * v)
+                            morning_by_day[day].append(length * v)
+                        else:
+                            afternoon.append(length * v)
+                            afternoon_by_day[day].append(length * v)
                         for h in span:
                             sec_busy.setdefault((day, h), []).append(v)
                             room_busy.setdefault((r, day, h), []).append(v)
@@ -140,14 +148,31 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
             if len(vs) > 1:
                 model.AddAtMostOne(vs)
 
-    # classes dino mein barabar, aur lunch se pehle/baad barabar
+    # Balance class-hours across days and on both sides of lunch.
     max_day = model.NewIntVar(0, len(hours), "max_day")
     for d in days:
         model.Add(sum(day_load[d]) <= max_day)
     diff = model.NewIntVar(0, 200, "diff")
     model.Add(sum(morning) - sum(afternoon) <= diff)
     model.Add(sum(afternoon) - sum(morning) <= diff)
-    model.Minimize(10 * max_day + diff)
+    daily_diffs = []
+    missing_periods = []
+    for d in days:
+        morning_present = model.NewBoolVar(f"morning_{d}")
+        afternoon_present = model.NewBoolVar(f"afternoon_{d}")
+        model.Add(sum(morning_by_day[d]) >= morning_present)
+        model.Add(sum(morning_by_day[d]) <= len(hours) * morning_present)
+        model.Add(sum(afternoon_by_day[d]) >= afternoon_present)
+        model.Add(sum(afternoon_by_day[d]) <= len(hours) * afternoon_present)
+        missing_periods.extend((1 - morning_present, 1 - afternoon_present))
+
+        daily_diff = model.NewIntVar(0, len(hours), f"period_diff_{d}")
+        model.Add(sum(morning_by_day[d]) - sum(afternoon_by_day[d]) <= daily_diff)
+        model.Add(sum(afternoon_by_day[d]) - sum(morning_by_day[d]) <= daily_diff)
+        daily_diffs.append(daily_diff)
+    model.Minimize(
+        1000 * sum(missing_periods) + 10 * max_day + diff + 5 * sum(daily_diffs)
+    )
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 20
     solver.parameters.num_workers = 8
@@ -223,6 +248,8 @@ def get_timetable(tid: int, db: Session = Depends(get_db)):
     for e, c, s, deg, room, teacher in rows:
         item = secs.setdefault(s.id, {"id": s.id,
                                       "label": f"{deg.name} - Section {s.name}",
+                                      "degree_name": deg.name,
+                                      "section_name": s.name,
                                       "entries": []})
         item["entries"].append({
             "day": e.day, "start": e.start_time.hour, "end": e.end_time.hour,
@@ -233,6 +260,53 @@ def get_timetable(tid: int, db: Session = Depends(get_db)):
             "degree_id": sec.degree_id if sec else None,
             "settings": json.loads(t.settings or "{}"),
             "sections": sorted(secs.values(), key=lambda x: x["label"])}
+
+
+@router.get("/rooms/{room_id}/schedule")
+def room_schedule(room_id: int, db: Session = Depends(get_db),
+                  admin: User = Depends(get_current_hod)):
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(404, "Room not found")
+
+    rows = (db.query(TimetableEntry, Course, Section, Degree, Timetable, Teacher)
+            .join(Timetable, Timetable.id == TimetableEntry.timetable_id)
+            .join(SectionCourse, SectionCourse.id == TimetableEntry.section_course_id)
+            .join(Course, Course.id == SectionCourse.course_id)
+            .join(Section, Section.id == SectionCourse.section_id)
+            .join(Degree, Degree.id == Section.degree_id)
+            .outerjoin(Teacher, Teacher.id == SectionCourse.teacher_id)
+            .filter(TimetableEntry.room_id == room_id,
+                    Timetable.status == "active",
+                    Section.status == "active")
+            .order_by(TimetableEntry.day, TimetableEntry.start_time).all())
+
+    schedules = []
+    starts, ends = [], []
+    for entry, course, section, degree, timetable, teacher in rows:
+        settings = json.loads(timetable.settings or "{}")
+        if "day_start" in settings:
+            starts.append(int(settings["day_start"]))
+        if "day_end" in settings:
+            ends.append(int(settings["day_end"]))
+        schedules.append({
+            "day": entry.day,
+            "start": entry.start_time.hour,
+            "end": entry.end_time.hour,
+            "course_code": course.code,
+            "course_name": course.name,
+            "section": f"{degree.name} - Section {section.name}",
+            "teacher": teacher.name if teacher else "TBA",
+        })
+
+    return {
+        "room": {"id": room.id, "name": room.name, "type": room.type,
+                 "lab_kind": room.lab_kind},
+        "day_start": min(starts, default=8),
+        "day_end": max(ends, default=17),
+        "days": ALL_DAYS,
+        "entries": schedules,
+    }
 @router.put("/timetables/{tid}")
 def rename_timetable(tid: int, data: dict, db: Session = Depends(get_db)):
     t = db.get(Timetable, tid)

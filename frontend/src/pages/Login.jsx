@@ -17,7 +17,11 @@ export default function Login() {
         body: JSON.stringify({ username, password }),
       });
       localStorage.setItem("token", data.token);
-      navigate("/users");
+      localStorage.setItem("role", data.role);
+      localStorage.setItem("username", data.username);
+      localStorage.setItem("displayName", data.display_name);
+      localStorage.setItem("teacherId", data.teacher_id ?? "");
+      navigate("/sessions");
     } catch (err) {
       setError(err.message);
     }

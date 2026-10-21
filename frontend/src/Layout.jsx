@@ -5,6 +5,7 @@ import { api } from "./api";
 export default function Layout() {
   const navigate = useNavigate();
   const loggedIn = !!localStorage.getItem("token");
+  const isHod = ["admin", "hod"].includes(localStorage.getItem("role"));
   const [tree, setTree] = useState([]);
   const [openKeys, setOpenKeys] = useState({ root: true });
 
@@ -28,6 +29,12 @@ export default function Layout() {
 
   function logout() {
     localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    localStorage.removeItem("username");
+    localStorage.removeItem("displayName");
+    localStorage.removeItem("teacherId");
+    sessionStorage.removeItem("adminGate");
+    sessionStorage.removeItem("adminReturnState");
     navigate("/login");
   }
 
@@ -67,7 +74,9 @@ export default function Layout() {
         ))}
 
         <div className="admin-box">
-          <NavLink to="/admin" className="admin-link">⚙ Admin</NavLink>
+          {isHod && (
+            <NavLink to="/admin" className="admin-link">Admin Panel</NavLink>
+          )}
           <button className="logout" onClick={logout}>Logout</button>
         </div>
       </aside>

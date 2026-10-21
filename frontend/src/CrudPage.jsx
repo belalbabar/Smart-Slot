@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 
-export default function CrudPage({ title, path, fields, canDelete = true }) {
+export default function CrudPage({
+  title,
+  path,
+  fields,
+  canDelete = true,
+  onSelect,
+  selectedId,
+}) {
   const empty = Object.fromEntries(fields.map((f) => [f.key, ""]));
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(empty);
@@ -83,8 +90,15 @@ export default function CrudPage({ title, path, fields, canDelete = true }) {
         </thead>
         <tbody>
           {items.map((it) => (
-            <tr key={it.id}>
-              {fields.map((f) => <td key={f.key}>{it[f.key]}</td>)}
+            <tr key={it.id} className={selectedId === it.id ? "selected-row" : ""}>
+              {fields.map((f) => (
+                <td key={f.key}>
+                  {onSelect && f.key === "name" ? (
+                    <button type="button" className="link-button"
+                      onClick={() => onSelect(it)}>{it[f.key]}</button>
+                  ) : it[f.key]}
+                </td>
+              ))}
               <td>
                 <button onClick={() => startEdit(it)}>Edit</button>{" "}
                 {canDelete && (

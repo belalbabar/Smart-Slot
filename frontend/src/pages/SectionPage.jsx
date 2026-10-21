@@ -8,6 +8,7 @@ const emptyCourse = {
   code: "", name: "", type: "theory", credit_hours: "",
   weekly_pattern: "3", lab_kind: "", teacher_id: "",
 };
+const THEORY_PATTERNS = ["3", "2+1", "1+1+1", "2", "1"];
 
 export default function SectionPage() {
   const { id, degreeId, sectionId } = useParams();
@@ -64,6 +65,10 @@ export default function SectionPage() {
     run(() => api(`/section-courses/${c.id}`, {
       method: "PUT", body: JSON.stringify({ teacher_id: v || null }),
     }));
+  const changePattern = (c, weekly_pattern) =>
+    run(() => api(`/section-courses/${c.id}`, {
+      method: "PUT", body: JSON.stringify({ weekly_pattern }),
+    }));
   const removeCourse = (c) =>
     window.confirm(`Remove ${c.code}?`) &&
     run(() => api(`/section-courses/${c.id}`, { method: "DELETE" }));
@@ -91,7 +96,15 @@ export default function SectionPage() {
               <td>{c.name}</td>
               <td>{c.type === "lab" ? `lab (${c.lab_kind || "?"})` : "theory"}</td>
               <td>{c.credit_hours}</td>
-              <td>{c.type === "lab" ? "3 (continuous)" : c.weekly_pattern}</td>
+              <td>{c.type === "lab" ? "3 (continuous)" : (
+                <select aria-label={`${c.code} weekly pattern`}
+                  value={c.weekly_pattern}
+                  onChange={(e) => changePattern(c, e.target.value)}>
+                  {THEORY_PATTERNS.map((pattern) => (
+                    <option key={pattern} value={pattern}>{pattern}</option>
+                  ))}
+                </select>
+              )}</td>
               <td>
                 <TeacherSelect value={c.teacher_id} teachers={teachers}
                   onChange={(v) => changeTeacher(c, v)} onCreated={loadTeachers} />
@@ -135,7 +148,7 @@ export default function SectionPage() {
         {form.type === "theory" ? (
           <select value={form.weekly_pattern}
             onChange={(e) => set("weekly_pattern", e.target.value)}>
-            {["3", "2+1", "1+1+1", "2", "1"].map((p) => <option key={p}>{p}</option>)}
+            {THEORY_PATTERNS.map((p) => <option key={p}>{p}</option>)}
           </select>
         ) : (
           <select value={form.lab_kind} onChange={(e) => set("lab_kind", e.target.value)}>
