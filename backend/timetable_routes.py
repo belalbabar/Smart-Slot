@@ -1,12 +1,12 @@
 import json
-from datetime import time
+from datetime import time, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ortools.sat.python import cp_model
-from datetime import time, datetime
+from sqlalchemy import or_
 
 from database import get_db
-from auth import get_current_hod, get_current_timetable_user
+from auth import get_current_timetable_user
 from models import (AcademicSession, Section, SectionCourse, Course, Teacher,
                     Room, Degree, Timetable, TimetableEntry,
                     TeacherUnavailability, User)
@@ -209,6 +209,15 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
             count += 1
     for tid, d in unavail_rows:
         db.add(TeacherUnavailability(timetable_id=tt.id, teacher_id=tid, day=d))
+    db.flush()
+    settings = json.loads(tt.settings)
+    settings["original_entries"] = [
+        {"entry_id": entry.id, "day": entry.day,
+         "start": entry.start_time.hour, "room_id": entry.room_id}
+        for entry in db.query(TimetableEntry)
+        .filter_by(timetable_id=tt.id).order_by(TimetableEntry.id).all()
+    ]
+    tt.settings = json.dumps(settings)
     db.commit()
 
     no_teacher = sorted({c.code for sc, c in items if not sc.teacher_id})
@@ -252,19 +261,30 @@ def get_timetable(tid: int, db: Session = Depends(get_db)):
                                       "section_name": s.name,
                                       "entries": []})
         item["entries"].append({
+            "entry_id": e.id,
             "day": e.day, "start": e.start_time.hour, "end": e.end_time.hour,
             "code": c.code, "course": c.name, "type": c.type,
+            "room_id": room.id,
             "teacher": teacher.name if teacher else "TBA", "room": room.name})
+    settings = json.loads(t.settings or "{}")
+    if "original_entries" not in settings and rows:
+        settings["original_entries"] = [
+            {"entry_id": entry.id, "day": entry.day,
+             "start": entry.start_time.hour, "room_id": entry.room_id}
+            for entry, *_ in rows
+        ]
+        t.settings = json.dumps(settings)
+        db.commit()
     return {"id": t.id, "name": t.name, "session_id": t.session_id,
             "section_id": t.section_id,
             "degree_id": sec.degree_id if sec else None,
-            "settings": json.loads(t.settings or "{}"),
+            "settings": settings,
             "sections": sorted(secs.values(), key=lambda x: x["label"])}
 
 
 @router.get("/rooms/{room_id}/schedule")
 def room_schedule(room_id: int, db: Session = Depends(get_db),
-                  admin: User = Depends(get_current_hod)):
+                  admin: User = Depends(get_current_timetable_user)):
     room = db.get(Room, room_id)
     if not room:
         raise HTTPException(404, "Room not found")
@@ -329,3 +349,139 @@ def delete_timetable(tid: int, db: Session = Depends(get_db)):
     t.archived_at = datetime.utcnow()
     db.commit()
     return {"deleted": tid}
+
+
+def entry_conflicts(db, timetable, entry, day, start, end, room_id,
+                    exclude_current_timetable=False):
+    section_course = db.get(SectionCourse, entry.section_course_id)
+    query = (db.query(TimetableEntry, SectionCourse, Course, Section, Degree, Room,
+                      Timetable)
+             .join(Timetable, Timetable.id == TimetableEntry.timetable_id)
+             .join(SectionCourse, SectionCourse.id == TimetableEntry.section_course_id)
+             .join(Course, Course.id == SectionCourse.course_id)
+             .join(Section, Section.id == SectionCourse.section_id)
+             .join(Degree, Degree.id == Section.degree_id)
+             .join(Room, Room.id == TimetableEntry.room_id)
+             .filter(
+                 TimetableEntry.day == day,
+                 TimetableEntry.id != entry.id,
+                 or_(Timetable.id == timetable.id,
+                     Timetable.status == "active"),
+                 Section.status == "active",
+             ))
+    if exclude_current_timetable:
+        query = query.filter(Timetable.id != timetable.id)
+    conflicts = []
+    for other, other_sc, other_course, other_section, other_degree, other_room, other_tt in query:
+        if other_tt.id != timetable.id and other_section.id == timetable.section_id:
+            continue
+        other_start = other.start_time.hour
+        other_end = other.end_time.hour
+        if start >= other_end or other_start >= end:
+            continue
+        if other_section.id == timetable.section_id:
+            reason = f"{other_degree.name}-{other_section.name} section is occupied"
+        elif room_id == other.room_id:
+            reason = f"Room {other_room.name} is occupied by {other_degree.name}-{other_section.name}"
+        elif section_course.teacher_id and other_sc.teacher_id == section_course.teacher_id:
+            teacher = db.get(Teacher, section_course.teacher_id)
+            reason = f"{teacher.name if teacher else 'Teacher'} is teaching {other_degree.name}-{other_section.name}"
+        else:
+            continue
+        conflicts.append(
+            f"{reason} at {day} {other_start}:00-{other_end}:00 "
+            f"({other_course.code} {other_course.name})"
+        )
+    return conflicts
+
+
+@router.put("/timetables/{tid}/entries/{entry_id}")
+def move_timetable_entry(tid: int, entry_id: int, data: dict,
+                         db: Session = Depends(get_db)):
+    timetable = db.get(Timetable, tid)
+    entry = db.get(TimetableEntry, entry_id)
+    if not timetable or not entry or entry.timetable_id != tid:
+        raise HTTPException(404, "Timetable entry not found")
+    settings = json.loads(timetable.settings or "{}")
+    day = data.get("day")
+    if day not in settings.get("days", []):
+        raise HTTPException(400, "Choose a working day")
+    try:
+        start = int(data.get("start"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Start time must be an hour number")
+    duration = entry.end_time.hour - entry.start_time.hour
+    end = start + duration
+    day_start = int(settings.get("day_start", 8))
+    day_end = int(settings.get("day_end", 17))
+    lunch_start = int(settings.get("lunch_start", 12))
+    lunch_end = int(settings.get("lunch_end", 13))
+    if start < day_start or end > day_end or start >= end:
+        raise HTTPException(400, "Drop the class inside the timetable hours")
+    if start < lunch_end and end > lunch_start:
+        raise HTTPException(400, "Classes cannot overlap the lunch break")
+
+    if section_course.teacher_id and db.query(TeacherUnavailability).filter_by(
+            timetable_id=tid, teacher_id=section_course.teacher_id, day=day
+    ).first():
+        teacher = db.get(Teacher, section_course.teacher_id)
+        raise HTTPException(
+            409,
+            detail=f"Clash: {teacher.name if teacher else 'Teacher'} is unavailable on {day}",
+        )
+
+    conflicts = entry_conflicts(
+        db, timetable, entry, day, start, end, entry.room_id
+    )
+    if conflicts:
+        raise HTTPException(409, detail="Clash: " + "; ".join(conflicts))
+
+    if "original_entries" not in settings:
+        settings["original_entries"] = [
+            {"entry_id": row.id, "day": row.day, "start": row.start_time.hour,
+             "room_id": row.room_id}
+            for row in db.query(TimetableEntry)
+            .filter_by(timetable_id=tid).order_by(TimetableEntry.id).all()
+        ]
+    entry.day = day
+    entry.start_time = time(start)
+    entry.end_time = time(end)
+    timetable.settings = json.dumps(settings)
+    db.commit()
+    return {"id": entry.id, "day": entry.day, "start": start, "end": end}
+
+
+@router.post("/timetables/{tid}/restore-original")
+def restore_original_timetable(tid: int, db: Session = Depends(get_db)):
+    timetable = db.get(Timetable, tid)
+    if not timetable:
+        raise HTTPException(404, "Timetable not found")
+    settings = json.loads(timetable.settings or "{}")
+    original = settings.get("original_entries")
+    if not original:
+        raise HTTPException(400, "This timetable has no saved original schedule")
+
+    entries = {row.id: row for row in db.query(TimetableEntry)
+               .filter_by(timetable_id=tid).all()}
+    if {row["entry_id"] for row in original} != set(entries):
+        raise HTTPException(409, "The saved original no longer matches this timetable")
+    for saved in original:
+        entry = entries[saved["entry_id"]]
+        duration = entry.end_time.hour - entry.start_time.hour
+        conflicts = entry_conflicts(
+            db, timetable, entry, saved["day"], saved["start"],
+            saved["start"] + duration, saved["room_id"],
+            exclude_current_timetable=True
+        )
+        if conflicts:
+            raise HTTPException(409, detail="Clash restoring original: " + "; ".join(conflicts))
+
+    for saved in original:
+        entry = entries[saved["entry_id"]]
+        duration = entry.end_time.hour - entry.start_time.hour
+        entry.day = saved["day"]
+        entry.start_time = time(saved["start"])
+        entry.end_time = time(saved["start"] + duration)
+        entry.room_id = saved["room_id"]
+    db.commit()
+    return {"restored": True}

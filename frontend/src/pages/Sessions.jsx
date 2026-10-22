@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../api";
+import HodPasswordDialog from "../HodPasswordDialog";
 
 export default function Sessions() {
   const { loadSessions } = useOutletContext();
@@ -9,6 +10,7 @@ export default function Sessions() {
   const [name, setName] = useState("");
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   async function load() {
     setItems(await api("/sessions"));
@@ -50,8 +52,29 @@ export default function Sessions() {
   }
 
   async function restore(s) {
-    await api(`/sessions/${s.id}/restore`, { method: "POST" });
-    load();
+    setError("");
+    try {
+      await api(`/sessions/${s.id}/restore`, { method: "POST" });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function permanentlyDelete({ admin_username, password }) {
+    const session = pendingDelete;
+    setPendingDelete(null);
+    if (!session) return;
+    setError("");
+    try {
+      await api(`/sessions/${session.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ admin_username, password }),
+      });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   return (
@@ -85,19 +108,28 @@ export default function Sessions() {
 
       {archived.length > 0 && (
         <>
-          <h3 style={{ marginTop: 28 }}>Archived (30 days)</h3>
+          <h3 style={{ marginTop: 28 }}>Archived</h3>
           <table>
             <tbody>
               {archived.map((s) => (
                 <tr key={s.id}>
                   <td>{s.name}</td>
                   <td>{s.archived_at && s.archived_at.slice(0, 10)}</td>
-                  <td><button onClick={() => restore(s)}>Restore</button></td>
+                  <td>
+                    <button onClick={() => restore(s)}>Restore</button>{" "}
+                    <button className="danger" onClick={() => setPendingDelete(s)}>
+                      Delete permanently
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </>
+      )}
+      {pendingDelete && (
+        <HodPasswordDialog action="Delete permanently"
+          onCancel={() => setPendingDelete(null)} onConfirm={permanentlyDelete} />
       )}
     </div>
   );

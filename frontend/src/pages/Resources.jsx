@@ -88,10 +88,12 @@ function RoomSchedule({ roomId }) {
 
 export const Rooms = () => {
   const [selected, setSelected] = useState(null);
+  const role = localStorage.getItem("role");
+  const readOnly = !["admin", "hod"].includes(role);
   return (
     <>
       <CrudPage title="Rooms & Labs" path="rooms" selectedId={selected?.id}
-        onSelect={setSelected}
+        onSelect={setSelected} readOnly={readOnly}
         fields={[
           { key: "name", label: "Room name" },
           { key: "type", label: "Type", options: ["theory", "lab"] },

@@ -46,6 +46,10 @@ class UpdateUser(BaseModel):
     display_name: Optional[str] = None
 
 
+class ProfileUpdate(BaseModel):
+    display_name: str
+
+
 @app.get("/")
 def home():
     return {"message": "SmartSlot is running"}
@@ -74,6 +78,17 @@ def me(admin: User = Depends(get_current_admin)):
             "display_name": admin.display_name or (
                 admin.teacher.name if admin.teacher else admin.username
             )}
+
+
+@app.put("/auth/profile")
+def update_profile(data: ProfileUpdate, user: User = Depends(get_current_admin),
+                   db: Session = Depends(get_db)):
+    display_name = data.display_name.strip()
+    if not display_name or len(display_name) > 80:
+        raise HTTPException(400, "Display name must be between 1 and 80 characters")
+    user.display_name = display_name
+    db.commit()
+    return {"username": user.username, "display_name": user.display_name}
 
 
 @app.get("/users")

@@ -16,6 +16,8 @@ export default function SectionPage() {
   const [form, setForm] = useState(emptyCourse);
   const [courses, setCourses] = useState([]);
   const [copyFrom, setCopyFrom] = useState("");
+  const [editingCourseId, setEditingCourseId] = useState(null);
+  const [editingCourse, setEditingCourse] = useState(emptyCourse);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
@@ -72,6 +74,34 @@ export default function SectionPage() {
   const removeCourse = (c) =>
     window.confirm(`Remove ${c.code}?`) &&
     run(() => api(`/section-courses/${c.id}`, { method: "DELETE" }));
+  const editCourse = (c) => {
+    setEditingCourseId(c.id);
+    setEditingCourse({
+      code: c.code,
+      name: c.name,
+      type: c.type,
+      credit_hours: String(c.credit_hours),
+      weekly_pattern: c.weekly_pattern,
+      lab_kind: c.lab_kind || "",
+      teacher_id: c.teacher_id ? String(c.teacher_id) : "",
+    });
+  };
+  const saveCourse = (e) => {
+    e.preventDefault();
+    run(async () => {
+      await api(`/section-courses/${editingCourseId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          ...editingCourse,
+          teacher_id: editingCourse.teacher_id || null,
+          credit_hours: Number(editingCourse.credit_hours),
+        }),
+      });
+      setEditingCourseId(null);
+    });
+  };
+  const setEditing = (key, value) =>
+    setEditingCourse((current) => ({ ...current, [key]: value }));
 
   return (
     <div>
@@ -87,29 +117,77 @@ export default function SectionPage() {
       <table>
         <thead>
           <tr><th>Code</th><th>Course</th><th>Type</th><th>Credits</th>
-            <th>Pattern</th><th>Teacher</th><th></th></tr>
+            <th>Pattern</th><th>Teacher</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {section.courses.map((c) => (
             <tr key={c.id}>
-              <td>{c.code}</td>
-              <td>{c.name}</td>
-              <td>{c.type === "lab" ? `lab (${c.lab_kind || "?"})` : "theory"}</td>
-              <td>{c.credit_hours}</td>
-              <td>{c.type === "lab" ? "3 (continuous)" : (
-                <select aria-label={`${c.code} weekly pattern`}
-                  value={c.weekly_pattern}
-                  onChange={(e) => changePattern(c, e.target.value)}>
-                  {THEORY_PATTERNS.map((pattern) => (
-                    <option key={pattern} value={pattern}>{pattern}</option>
-                  ))}
-                </select>
-              )}</td>
-              <td>
-                <TeacherSelect value={c.teacher_id} teachers={teachers}
-                  onChange={(v) => changeTeacher(c, v)} onCreated={loadTeachers} />
-              </td>
-              <td><button className="danger" onClick={() => removeCourse(c)}>Remove</button></td>
+              {editingCourseId === c.id ? (
+                <td colSpan={7}>
+                  <form className="row course-edit" onSubmit={saveCourse}>
+                    <input aria-label="Course code" required placeholder="Code"
+                      value={editingCourse.code}
+                      onChange={(e) => setEditing("code", e.target.value)} />
+                    <input aria-label="Course name" required placeholder="Course name"
+                      value={editingCourse.name}
+                      onChange={(e) => setEditing("name", e.target.value)} />
+                    <select aria-label="Course type" value={editingCourse.type}
+                      onChange={(e) => setEditing("type", e.target.value)}>
+                      <option value="theory">theory</option>
+                      <option value="lab">lab</option>
+                    </select>
+                    <input aria-label="Credit hours" required type="number" min="1"
+                      value={editingCourse.credit_hours}
+                      onChange={(e) => setEditing("credit_hours", e.target.value)} />
+                    {editingCourse.type === "theory" ? (
+                      <select aria-label="Weekly pattern"
+                        value={editingCourse.weekly_pattern}
+                        onChange={(e) => setEditing("weekly_pattern", e.target.value)}>
+                        {THEORY_PATTERNS.map((pattern) => (
+                          <option key={pattern} value={pattern}>{pattern}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select aria-label="Lab kind" required value={editingCourse.lab_kind}
+                        onChange={(e) => setEditing("lab_kind", e.target.value)}>
+                        <option value="">Lab kind</option>
+                        <option value="hardware">hardware</option>
+                        <option value="software">software</option>
+                      </select>
+                    )}
+                    <TeacherSelect value={editingCourse.teacher_id} teachers={teachers}
+                      onChange={(value) => setEditing("teacher_id", value)}
+                      onCreated={loadTeachers} />
+                    <button type="submit">Save row</button>
+                    <button type="button" className="grey"
+                      onClick={() => setEditingCourseId(null)}>Cancel</button>
+                  </form>
+                </td>
+              ) : (
+                <>
+                  <td>{c.code}</td>
+                  <td>{c.name}</td>
+                  <td>{c.type === "lab" ? `lab (${c.lab_kind || "?"})` : "theory"}</td>
+                  <td>{c.credit_hours}</td>
+                  <td>{c.type === "lab" ? "3 (continuous)" : (
+                    <select aria-label={`${c.code} weekly pattern`}
+                      value={c.weekly_pattern}
+                      onChange={(e) => changePattern(c, e.target.value)}>
+                      {THEORY_PATTERNS.map((pattern) => (
+                        <option key={pattern} value={pattern}>{pattern}</option>
+                      ))}
+                    </select>
+                  )}</td>
+                  <td>
+                    <TeacherSelect value={c.teacher_id} teachers={teachers}
+                      onChange={(v) => changeTeacher(c, v)} onCreated={loadTeachers} />
+                  </td>
+                  <td>
+                    <button type="button" onClick={() => editCourse(c)}>Edit</button>{" "}
+                    <button className="danger" onClick={() => removeCourse(c)}>Remove</button>
+                  </td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>

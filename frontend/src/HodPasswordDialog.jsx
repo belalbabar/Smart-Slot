@@ -13,11 +13,11 @@ export default function HodPasswordDialog({ action, onCancel, onConfirm }) {
     <div className="dialog-backdrop">
       <form className="card action-dialog" onSubmit={submit}>
         <h2>Confirm {action}</h2>
-        <p className="muted">Enter the HOD credentials to continue.</p>
-        <input autoFocus required placeholder="HOD username" value={username}
+        <p className="muted">Admin verification required.</p>
+        <input autoFocus required placeholder="Admin username" value={username}
           onChange={(e) => setUsername(e.target.value)} />
         <input required type="password" autoComplete="current-password"
-          placeholder="HOD password" value={password}
+          placeholder="Admin password" value={password}
           onChange={(e) => setPassword(e.target.value)} />
         <div className="row">
           <button type="submit">{action}</button>

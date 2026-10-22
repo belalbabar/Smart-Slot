@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from database import get_db
-from auth import get_current_admin, get_current_hod
+from auth import get_current_admin, get_current_hod, get_current_timetable_user
 from models import Degree, Teacher, Room, Course, AcademicSession, User
 
 # is router ke saare routes par login zaroori hai
@@ -91,7 +91,8 @@ def check_room(d):
         d["lab_kind"] = None
 
 
-make_crud("teachers", Teacher, ["name", "email"], ["name"],
+make_crud("teachers", Teacher, ["name", "email", "phone"], ["name"],
           write_access=get_current_hod)
 make_crud("rooms", Room, ["name", "type", "lab_kind"], ["name", "type"],
-          validate=check_room, read_access=get_current_hod)
+          validate=check_room, write_access=get_current_hod,
+          read_access=get_current_timetable_user)

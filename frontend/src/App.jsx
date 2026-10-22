@@ -52,7 +52,7 @@ function HodOnly({ children }) {
 
 function AdminHome() {
   const role = localStorage.getItem("role");
-  return <Navigate to={role === "timetable" ? "/sessions" : "/admin/teachers"} replace />;
+  return <Navigate to={role === "timetable" ? "/admin/rooms" : "/admin/teachers"} replace />;
 }
 
 export default function App() {
@@ -66,13 +66,13 @@ export default function App() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminHome />} />
             <Route path="teachers" element={<HodOnly><TeacherDashboard /></HodOnly>} />
-            <Route path="rooms" element={<HodOnly><Rooms /></HodOnly>} />
+            <Route path="rooms" element={<Rooms />} />
             <Route path="users" element={<HodOnly><Users /></HodOnly>} />
           </Route>
 
           <Route element={<Layout />}>
             <Route path="/sessions" element={<Sessions />} />
-            <Route path="/rooms" element={<HodOnly><Rooms /></HodOnly>} />
+            <Route path="/rooms" element={<Rooms />} />
             <Route path="/sessions/:id" element={<SessionPage />} />
             <Route
               path="/sessions/:id/degrees/:degreeId"

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import TimetableDownloadMenu from "../TimetableDownloadMenu";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -152,7 +153,6 @@ export default function GeneratePage() {
               {old.map((t) => (
                 <tr key={t.id}>
                   <td><Link to={`/timetables/${t.id}`}>{t.name}</Link></td>
-                  <td>{t.current ? "Current" : "Old"}</td>
                   <td>{t.created_at.slice(0, 16).replace("T", " ")}</td>
                   <td style={{ width: 50 }}>
                     <div className="dots-wrap">
@@ -162,6 +162,7 @@ export default function GeneratePage() {
                         <div className="dots-menu">
                           <button type="button" onClick={() => renameTt(t)}>Rename</button>
                           <button type="button" className="del" onClick={() => deleteTt(t)}>Delete</button>
+                          <TimetableDownloadMenu timetableId={t.id} />
                         </div>
                       )}
                     </div>

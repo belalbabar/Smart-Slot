@@ -34,6 +34,8 @@ export default function TimetablePage() {
   const [tt, setTt] = useState(null);
   const [secId, setSecId] = useState("");
   const [error, setError] = useState("");
+  const [clash, setClash] = useState("");
+  const [undoStack, setUndoStack] = useState([]);
   const exportRef = useRef(null);
 
   useEffect(() => {
@@ -123,6 +125,84 @@ export default function TimetablePage() {
     }
   }
 
+  async function downloadImage() {
+    try {
+      if (!exportRef.current) throw new Error("Timetable grid is not ready");
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(exportRef.current, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        windowWidth: exportRef.current.scrollWidth,
+      });
+      const link = document.createElement("a");
+      link.download = `${safeFilename(tt.name)}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (err) {
+      setError(`Could not export image: ${err.message}`);
+    }
+  }
+
+  async function reloadTimetable() {
+    const data = await api(`/timetables/${tid}`);
+    setTt(data);
+  }
+
+  async function moveEntry(entryId, day, start) {
+    const entry = sec?.entries.find((item) => item.entry_id === entryId);
+    if (!entry || (entry.day === day && Number(entry.start) === start)) return;
+    setClash("");
+    setError("");
+    try {
+      await api(`/timetables/${tid}/entries/${entryId}`, {
+        method: "PUT",
+        body: JSON.stringify({ day, start }),
+      });
+      setUndoStack((stack) => [...stack, {
+        entry_id: entryId, day: entry.day, start: Number(entry.start),
+      }]);
+      await reloadTimetable();
+    } catch (err) {
+      if (err.message.toLowerCase().includes("clash")) setClash(err.message);
+      else setError(err.message);
+    }
+  }
+
+  async function undoMove() {
+    const previous = undoStack[undoStack.length - 1];
+    if (!previous) return;
+    try {
+      setClash("");
+      await api(`/timetables/${tid}/entries/${previous.entry_id}`, {
+        method: "PUT",
+        body: JSON.stringify({ day: previous.day, start: previous.start }),
+      });
+      setUndoStack((stack) => stack.slice(0, -1));
+      await reloadTimetable();
+    } catch (err) {
+      setClash(err.message);
+    }
+  }
+
+  async function restoreOriginal() {
+    setClash("");
+    setError("");
+    try {
+      await api(`/timetables/${tid}/restore-original`, { method: "POST" });
+      setUndoStack([]);
+      await reloadTimetable();
+    } catch (err) {
+      if (err.message.toLowerCase().includes("clash")) setClash(err.message);
+      else setError(err.message);
+    }
+  }
+
+  function handleDrop(event, day, start) {
+    event.preventDefault();
+    const entryId = Number(event.dataTransfer.getData("text/plain"));
+    if (entryId) moveEntry(entryId, day, start);
+  }
+
   const shownDays = [...WEEK];
   if (st.days.includes("Saturday")) shownDays.push("Saturday");
   const inLunch = (h) => h >= st.lunch_start && h < st.lunch_end;
@@ -173,21 +253,36 @@ export default function TimetablePage() {
   function dayRow(d, di) {
     if (!st.days.includes(d)) return offRow(d, di);
     const cells = [];
-    for (let h = st.day_start; h < st.day_end; h++) {
+    let h = st.day_start;
+    while (h < st.day_end) {
       if (inLunch(h)) {
         if (di === 0 && h === st.lunch_start) cells.push(lunchCell(h));
+        h++;
         continue;
       }
       const e = sec.entries.find((x) =>
         String(x.day).trim().toLowerCase() === d.toLowerCase()
         && hourValue(x.start) === h
       );
-      if (!e) { cells.push(<td key={h}></td>); continue; }
+      if (!e) {
+        const targetStart = h;
+        cells.push(<td key={h} onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => handleDrop(event, d, targetStart)}></td>);
+        h++;
+        continue;
+      }
+      const targetStart = h;
       const start = hourValue(e.start);
       const end = hourValue(e.end);
       const len = end - start;
       cells.push(
-        <td key={h} colSpan={len} className={"slot " + e.type}>
+        <td key={h} colSpan={len} className={"slot " + e.type}
+          draggable onDragStart={(event) => {
+            event.dataTransfer.setData("text/plain", String(e.entry_id));
+            event.dataTransfer.effectAllowed = "move";
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => handleDrop(event, d, targetStart)}>
           <b>{e.code} {e.course}</b>
           {e.teacher !== "TBA" && <div>{e.teacher}</div>}
           <div>{e.room}</div>
@@ -197,7 +292,7 @@ export default function TimetablePage() {
           </div>
         </td>
       );
-      h += len - 1;
+      h += len;
     }
     return <tr key={d}><td className="dayname">{d}</td>{cells}</tr>;
   }
@@ -211,9 +306,16 @@ export default function TimetablePage() {
       </p>
       <div className="row">
         <button type="button" onClick={downloadPdf}>Download PDF</button>
+        <button type="button" onClick={downloadImage}>Download Image</button>
         <button type="button" onClick={downloadExcel}>Download Excel</button>
+        <button type="button" title="Undo last timetable change"
+          aria-label="Undo last timetable change" disabled={!undoStack.length}
+          onClick={undoMove}>Undo</button>
+        <button type="button" disabled={!tt.settings.original_entries?.length}
+          onClick={restoreOriginal}>Original</button>
       </div>
       {error && <p className="error">{error}</p>}
+      {clash && <p role="alert" className="clash-warning">{clash}</p>}
       {location.state?.secs !== undefined && (
         <p className="muted">Generated in {location.state.secs} seconds</p>
       )}

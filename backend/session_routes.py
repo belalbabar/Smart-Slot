@@ -91,6 +91,72 @@ def restore_session(session_id: int, db: Session = Depends(get_db)):
     return s_dict(s)
 
 
+@router.delete("/sessions/{session_id}")
+def delete_session(session_id: int, data: dict, db: Session = Depends(get_db)):
+    session = get_session_or_404(db, session_id)
+    admin_username = (data.get("admin_username") or "").strip()
+    password = data.get("password")
+    admin = db.query(User).filter(
+        User.username == admin_username,
+        User.role.in_(("admin", "hod")),
+    ).first()
+    if not admin or not isinstance(password, str) or not verify_password(
+            password, admin.password_hash):
+        raise HTTPException(403, "Admin username or password is incorrect")
+
+    section_ids = [row[0] for row in db.query(Section.id)
+                   .filter_by(session_id=session_id).all()]
+    section_course_ids = [row[0] for row in db.query(SectionCourse.id)
+                          .filter(SectionCourse.section_id.in_(section_ids)).all()]
+    timetable_ids = [row[0] for row in db.query(Timetable.id)
+                     .filter(or_(
+                         Timetable.session_id == session_id,
+                         Timetable.section_id.in_(section_ids),
+                     )).all()]
+    if timetable_ids:
+        db.query(TeacherUnavailability).filter(
+            TeacherUnavailability.timetable_id.in_(timetable_ids)
+        ).delete(synchronize_session=False)
+    filters = []
+    if timetable_ids:
+        filters.append(TimetableEntry.timetable_id.in_(timetable_ids))
+    if section_course_ids:
+        filters.append(TimetableEntry.section_course_id.in_(section_course_ids))
+    if filters:
+        db.query(TimetableEntry).filter(or_(*filters)).delete(
+            synchronize_session=False
+        )
+    if timetable_ids:
+        db.query(Timetable).filter(Timetable.id.in_(timetable_ids)).delete(
+            synchronize_session=False
+        )
+    if section_ids:
+        db.query(SectionCourse).filter(
+            SectionCourse.section_id.in_(section_ids)
+        ).delete(synchronize_session=False)
+        db.query(Section).filter(Section.id.in_(section_ids)).delete(
+            synchronize_session=False
+        )
+
+    degree_ids = [row[0] for row in db.query(SessionDegree.degree_id)
+                  .filter_by(session_id=session_id).all()]
+    db.query(SessionDegree).filter_by(session_id=session_id).delete(
+        synchronize_session=False
+    )
+    for degree_id in degree_ids:
+        has_session_link = db.query(SessionDegree).filter_by(
+            degree_id=degree_id
+        ).first()
+        has_section = db.query(Section).filter_by(degree_id=degree_id).first()
+        if not has_session_link and not has_section:
+            db.query(Degree).filter_by(id=degree_id).delete(
+                synchronize_session=False
+            )
+    db.delete(session)
+    db.commit()
+    return {"deleted": session_id}
+
+
 # ---------- Full tree of one session ----------
 @router.get("/sessions/{session_id}/overview")
 def overview(session_id: int, db: Session = Depends(get_db)):
@@ -288,15 +354,74 @@ def set_teacher(sc_id: int, data: dict, db: Session = Depends(get_db)):
     sc = db.get(SectionCourse, sc_id)
     if not sc:
         raise HTTPException(404, "Not found")
+    course = db.get(Course, sc.course_id)
+
+    editable = ("code", "name", "type", "credit_hours", "lab_kind")
+    changes = {}
+    for field in editable:
+        if field in data:
+            value = data[field]
+            if isinstance(value, str):
+                value = value.strip()
+            if field in ("code", "name") and not value:
+                raise HTTPException(400, f"{field} is required")
+            changes[field] = value
+
+    updated_type = changes.get("type", course.type)
+    if updated_type not in ("lab", "theory"):
+        raise HTTPException(400, "type must be lab or theory")
+    updated_lab_kind = changes.get("lab_kind", course.lab_kind)
+    if updated_type == "lab" and updated_lab_kind not in ("hardware", "software"):
+        raise HTTPException(400, "Choose lab kind: hardware or software")
+    if updated_type != "lab":
+        changes["lab_kind"] = None
+    if "credit_hours" in changes:
+        try:
+            changes["credit_hours"] = int(changes["credit_hours"])
+        except (TypeError, ValueError):
+            raise HTTPException(400, "credit_hours must be a number")
+        if changes["credit_hours"] < 1:
+            raise HTTPException(400, "credit_hours must be at least 1")
+
+    new_code = changes.get("code", course.code)
+    duplicate = (db.query(SectionCourse)
+                 .join(Course, Course.id == SectionCourse.course_id)
+                 .filter(SectionCourse.section_id == sc.section_id,
+                         SectionCourse.id != sc.id,
+                         func.lower(Course.code) == new_code.lower())
+                 .first())
+    if duplicate:
+        raise HTTPException(400, "A course with this code is already in the section")
+
+    if changes:
+        linked_count = db.query(SectionCourse).filter_by(
+            course_id=course.id
+        ).count()
+        if linked_count > 1:
+            course = Course(
+                code=changes.get("code", course.code),
+                name=changes.get("name", course.name),
+                type=updated_type,
+                credit_hours=changes.get("credit_hours", course.credit_hours),
+                weekly_pattern=course.weekly_pattern,
+                lab_kind=changes.get("lab_kind", course.lab_kind),
+            )
+            db.add(course)
+            db.flush()
+            sc.course_id = course.id
+        else:
+            for field, value in changes.items():
+                setattr(course, field, value)
+
     if "teacher_id" in data:
         sc.teacher_id = teacher_or_none(db, data.get("teacher_id"))
-    if "weekly_pattern" in data:
+    if updated_type == "theory" and "weekly_pattern" in data:
         pattern = (data.get("weekly_pattern") or "").strip()
-        course = db.get(Course, sc.course_id)
-        if course.type != "theory" or pattern not in (
-                "3", "2+1", "1+1+1", "2", "1"):
+        if pattern not in ("3", "2+1", "1+1+1", "2", "1"):
             raise HTTPException(400, "Choose a valid theory weekly pattern")
         sc.weekly_pattern = pattern
+    elif updated_type == "lab":
+        sc.weekly_pattern = None
     db.commit()
     course = db.get(Course, sc.course_id)
     return {"id": sc.id, "teacher_id": sc.teacher_id,
@@ -357,6 +482,7 @@ def teacher_workload(db: Session = Depends(get_db),
                             "section": sec.name, "code": c.code,
                             "course": c.name, "type": c.type, "hours": h})
         out.append({"id": t.id, "name": t.name, "email": t.email,
+                    "phone": t.phone,
                     "course_count": len(classes), "weekly_hours": hours,
                     "classes": classes})
     return out

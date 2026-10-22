@@ -6,6 +6,7 @@ export default function CrudPage({
   path,
   fields,
   canDelete = true,
+  readOnly = false,
   onSelect,
   selectedId,
 }) {
@@ -60,32 +61,34 @@ export default function CrudPage({
   return (
     <div>
       <h2>{title}</h2>
-      <form className="row" onSubmit={save}>
-        {fields.map((f) =>
-          f.options ? (
-            <select key={f.key} value={form[f.key]}
-              onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}>
-              <option value="">{f.label}</option>
-              {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-          ) : (
-            <input key={f.key} placeholder={f.label} value={form[f.key]}
-              type={f.type || "text"}
-              onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
-          )
-        )}
-        <button type="submit">{editId ? "Update" : "Add"}</button>
-        {editId && (
-          <button type="button" className="grey"
-            onClick={() => { setEditId(null); setForm(empty); }}>Cancel</button>
-        )}
-      </form>
+      {!readOnly && (
+        <form className="row" onSubmit={save}>
+          {fields.map((f) =>
+            f.options ? (
+              <select key={f.key} value={form[f.key]}
+                onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}>
+                <option value="">{f.label}</option>
+                {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input key={f.key} placeholder={f.label} value={form[f.key]}
+                type={f.type || "text"}
+                onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
+            )
+          )}
+          <button type="submit">{editId ? "Update" : "Add"}</button>
+          {editId && (
+            <button type="button" className="grey"
+              onClick={() => { setEditId(null); setForm(empty); }}>Cancel</button>
+          )}
+        </form>
+      )}
       {error && <p className="error">{error}</p>}
       <table>
         <thead>
           <tr>
             {fields.map((f) => <th key={f.key}>{f.label}</th>)}
-            <th></th>
+            {!readOnly && <th></th>}
           </tr>
         </thead>
         <tbody>
@@ -99,12 +102,14 @@ export default function CrudPage({
                   ) : it[f.key]}
                 </td>
               ))}
-              <td>
-                <button onClick={() => startEdit(it)}>Edit</button>{" "}
-                {canDelete && (
-                  <button className="danger" onClick={() => remove(it.id)}>Delete</button>
-                )}
-              </td>
+              {!readOnly && (
+                <td>
+                  <button onClick={() => startEdit(it)}>Edit</button>{" "}
+                  {canDelete && (
+                    <button className="danger" onClick={() => remove(it.id)}>Delete</button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
