@@ -11,7 +11,7 @@ function roleName(role) {
 
 function assignedArea(role) {
   return ["admin", "hod"].includes(role)
-    ? "All areas: timetable, rooms/labs, teachers, and user accounts"
+    ? "All access"
     : "Timetable";
 }
 

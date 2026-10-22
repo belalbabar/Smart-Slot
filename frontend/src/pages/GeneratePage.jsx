@@ -104,8 +104,8 @@ export default function GeneratePage() {
         <div className="row">
           <label>Start <input type="number" value={dayStart} onChange={(e) => setDayStart(e.target.value)} /></label>
           <label>End <input type="number" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} /></label>
-          <label>Lunch from <input type="number" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} /></label>
-          <label>Lunch to <input type="number" value={lunchEnd} onChange={(e) => setLunchEnd(e.target.value)} /></label>
+          <label>Break from <input type="number" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} /></label>
+          <label>Break to <input type="number" value={lunchEnd} onChange={(e) => setLunchEnd(e.target.value)} /></label>
         </div>
       </div>
 

@@ -26,33 +26,10 @@ function RoomSchedule({ roomId }) {
   if (error) return <p className="error">{error}</p>;
   if (!schedule) return <p className="muted">Loading room schedule...</p>;
 
-  const rows = DAYS.flatMap((day) => {
-    const entries = schedule.entries
-      .filter((entry) => entry.day === day)
-      .sort((a, b) => a.start - b.start);
-    const dayRows = [];
-    let cursor = schedule.day_start;
-    for (const entry of entries) {
-      if (entry.start > cursor) {
-        dayRows.push({
-          day, start: cursor, end: entry.start, status: "Free",
-        });
-      }
-      dayRows.push({ ...entry, status: "Occupied" });
-      cursor = Math.max(cursor, entry.end);
-    }
-    if (cursor < schedule.day_end) {
-      dayRows.push({
-        day, start: cursor, end: schedule.day_end, status: "Free",
-      });
-    }
-    if (dayRows.length === 0) {
-      dayRows.push({
-        day, start: schedule.day_start, end: schedule.day_end, status: "Free",
-      });
-    }
-    return dayRows;
-  });
+  const hours = Array.from(
+    { length: schedule.day_end - schedule.day_start },
+    (_, index) => schedule.day_start + index
+  );
 
   return (
     <div className="panel">
@@ -61,27 +38,70 @@ function RoomSchedule({ roomId }) {
         {schedule.room.type === "lab" ? `${schedule.room.lab_kind} lab` : "Theory room"}
         {" · "}Current active timetables
       </p>
-      <table>
+      <div className="room-schedule-scroll">
+      <table className="room-schedule-grid">
         <thead>
-          <tr><th>Day</th><th>Time</th><th>Status</th><th>Class details</th></tr>
+          <tr>
+            <th>Day</th>
+            {hours.map((hour) => (
+              <th key={hour}>{formatHour(hour)} - {formatHour(hour + 1)}</th>
+            ))}
+          </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
-            <tr key={`${row.day}-${row.start}-${index}`}>
-              <td>{row.day}</td>
-              <td>{formatHour(row.start)} - {formatHour(row.end)}</td>
-              <td>
-                <span className={`room-status ${row.status.toLowerCase()}`}>
-                  {row.status}
-                </span>
-              </td>
-              <td>{row.status === "Occupied"
-                ? `${row.course_code} ${row.course_name} · ${row.section} · ${row.teacher}`
-                : "No class scheduled"}</td>
-            </tr>
-          ))}
+          {DAYS.map((day) => {
+            const cells = [];
+            for (let index = 0; index < hours.length;) {
+              const hour = hours[index];
+                const entries = schedule.entries.filter((entry) =>
+                  entry.day === day && entry.start <= hour && entry.end > hour
+                );
+                if (!entries.length) {
+                  let freeHours = 0;
+                  for (let next = index; next < hours.length; next += 1) {
+                    const nextHour = hours[next];
+                    const occupied = schedule.entries.some((entry) =>
+                      entry.day === day && entry.start <= nextHour && entry.end > nextHour
+                    );
+                    if (occupied) break;
+                    freeHours += 1;
+                  }
+                  cells.push(
+                    <td key={hour} colSpan={freeHours}
+                      className="room-hour free">
+                      <span className="room-status free">Free</span>
+                    </td>
+                  );
+                  index += freeHours;
+                  continue;
+                }
+                cells.push(
+                  <td key={hour} className="room-hour occupied"
+                    title={entries.map((entry) =>
+                      `${entry.course_code} ${entry.course_name} · ${entry.section} · ${entry.teacher}`
+                    ).join("\n") || `${day}: Free`}>
+                    {entries.map((entry) => (
+                      <div key={`${entry.course_code}-${entry.start}`} className="room-class">
+                        <span className="room-status occupied">Occupied</span>
+                        <strong>{entry.course_code}</strong>
+                        <span>{entry.section}</span>
+                        <span>{entry.teacher}</span>
+                      </div>
+                    ))}
+                  </td>
+                );
+                index += 1;
+            }
+            return (
+              <tr key={day}>
+                <th scope="row">{day}</th>
+                {cells}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

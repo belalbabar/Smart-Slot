@@ -209,7 +209,17 @@ def add_degree(session_id: int, data: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/sessions/{session_id}/degrees/{degree_id}")
-def remove_degree(session_id: int, degree_id: int, db: Session = Depends(get_db)):
+def remove_degree(session_id: int, degree_id: int, data: dict,
+                  db: Session = Depends(get_db)):
+    admin_username = (data.get("admin_username") or "").strip()
+    password = data.get("password")
+    admin = db.query(User).filter(
+        User.username == admin_username,
+        User.role.in_(("admin", "hod")),
+    ).first()
+    if not admin or not isinstance(password, str) or not verify_password(
+            password, admin.password_hash):
+        raise HTTPException(403, "HOD username or password is incorrect")
     if db.query(Section).filter_by(session_id=session_id, degree_id=degree_id,
                                    status="active").first():
         raise HTTPException(400, "Remove its sections first")
@@ -347,6 +357,126 @@ def add_course(section_id: int, data: dict, db: Session = Depends(get_db)):
     db.add(sc)
     db.commit()
     return {"id": sc.id}
+
+
+@router.post("/sections/{section_id}/courses/import")
+def import_courses(section_id: int, data: dict, db: Session = Depends(get_db)):
+    section = db.get(Section, section_id)
+    if not section:
+        raise HTTPException(404, "Section not found")
+    rows = data.get("courses")
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(400, "The Excel sheet contains no courses to import")
+    if len(rows) > 500:
+        raise HTTPException(400, "Import no more than 500 courses at a time")
+
+    prepared = []
+    seen_codes = set()
+    allowed_patterns = {"3", "2+1", "1+1+1", "2", "1"}
+    for index, row in enumerate(rows, start=2):
+        if not isinstance(row, dict):
+            raise HTTPException(400, f"Excel row {index}: invalid course data")
+
+        code = str(row.get("code") or "").strip()
+        name = str(row.get("name") or "").strip()
+        course_type = str(row.get("type") or "").strip().lower()
+        try:
+            credit_hours = int(row.get("credit_hours"))
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"Excel row {index}: credit hours must be a whole number")
+        if not code or not name:
+            raise HTTPException(400, f"Excel row {index}: course code and name are required")
+        if credit_hours < 1:
+            raise HTTPException(400, f"Excel row {index}: credit hours must be positive")
+        if course_type not in ("theory", "lab"):
+            raise HTTPException(400, f"Excel row {index}: type must be theory or lab")
+
+        pattern = str(row.get("weekly_pattern") or "").strip()
+        lab_kind = str(row.get("lab_kind") or "").strip().lower() or None
+        if course_type == "theory" and pattern not in allowed_patterns:
+            raise HTTPException(400, f"Excel row {index}: invalid theory weekly pattern")
+        if course_type == "lab" and lab_kind not in ("hardware", "software"):
+            raise HTTPException(400, f"Excel row {index}: lab kind must be hardware or software")
+        code_key = code.casefold()
+        if code_key in seen_codes:
+            raise HTTPException(400, f"Excel row {index}: duplicate course code {code}")
+        seen_codes.add(code_key)
+
+        existing_assignment = (
+            db.query(SectionCourse)
+            .join(Course, Course.id == SectionCourse.course_id)
+            .filter(SectionCourse.section_id == section_id,
+                    func.lower(Course.code) == code.lower())
+            .first()
+        )
+        if existing_assignment:
+            raise HTTPException(400, f"Excel row {index}: {code} is already in this section")
+
+        course = db.query(Course).filter(func.lower(Course.code) == code.lower()).first()
+        if course and (
+            course.name.strip().casefold() != name.casefold()
+            or course.type != course_type
+            or course.credit_hours != credit_hours
+            or (course_type == "lab" and course.lab_kind != lab_kind)
+        ):
+            raise HTTPException(
+                400,
+                f"Excel row {index}: {code} already exists with different course details",
+            )
+
+        teacher_name = str(row.get("teacher") or "").strip()
+        teacher = None
+        if teacher_name:
+            matches = db.query(Teacher).filter(
+                func.lower(Teacher.name) == teacher_name.lower()
+            ).all()
+            if not matches:
+                raise HTTPException(
+                    400, f"Excel row {index}: teacher \"{teacher_name}\" was not found"
+                )
+            if len(matches) > 1:
+                raise HTTPException(
+                    400, f"Excel row {index}: teacher name \"{teacher_name}\" is ambiguous"
+                )
+            teacher = matches[0]
+
+        prepared.append({
+            "course": course,
+            "code": code,
+            "name": name,
+            "type": course_type,
+            "credit_hours": credit_hours,
+            "pattern": "3" if course_type == "lab" else pattern,
+            "lab_kind": lab_kind if course_type == "lab" else None,
+            "teacher_id": teacher.id if teacher else None,
+        })
+
+    for item in prepared:
+        course = item["course"]
+        if not course:
+            course = Course(
+                code=item["code"],
+                name=item["name"],
+                type=item["type"],
+                credit_hours=item["credit_hours"],
+                weekly_pattern=item["pattern"],
+                lab_kind=item["lab_kind"],
+            )
+            db.add(course)
+            db.flush()
+        pattern_override = (
+            item["pattern"]
+            if item["type"] == "theory" and item["pattern"] != course.weekly_pattern
+            else None
+        )
+        db.add(SectionCourse(
+            section_id=section_id,
+            course_id=course.id,
+            teacher_id=item["teacher_id"],
+            weekly_pattern=pattern_override,
+        ))
+    db.commit()
+    return {"imported": len(prepared)}
 
 
 @router.put("/section-courses/{sc_id}")

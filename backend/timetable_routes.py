@@ -171,7 +171,8 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
         model.Add(sum(afternoon_by_day[d]) - sum(morning_by_day[d]) <= daily_diff)
         daily_diffs.append(daily_diff)
     model.Minimize(
-        1000 * sum(missing_periods) + 10 * max_day + diff + 5 * sum(daily_diffs)
+        1000 * sum(missing_periods) + 40 * sum(daily_diffs)
+        + 10 * max_day + 5 * diff
     )
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 20
@@ -402,6 +403,9 @@ def move_timetable_entry(tid: int, entry_id: int, data: dict,
     entry = db.get(TimetableEntry, entry_id)
     if not timetable or not entry or entry.timetable_id != tid:
         raise HTTPException(404, "Timetable entry not found")
+    section_course = db.get(SectionCourse, entry.section_course_id)
+    if not section_course:
+        raise HTTPException(404, "Course assignment not found")
     settings = json.loads(timetable.settings or "{}")
     day = data.get("day")
     if day not in settings.get("days", []):

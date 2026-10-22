@@ -1,31 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { api } from "../api";
+import { buildTimetableGrid } from "../timetableGrid";
+import {
+  downloadTimetableImage,
+  downloadTimetablePdf,
+  sectionCode,
+} from "../timetableExport";
 
 const f = (h) => (h % 12 === 0 ? 12 : h % 12);
 const fmt = (h) => `${f(h)}:00 ${h < 12 ? "AM" : "PM"}`;
 const WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const DAY_ORDER = [...WEEK, "Saturday"];
 
-function hourValue(value) {
-  const numeric = Number(value);
-  if (Number.isFinite(numeric)) return numeric;
-  const match = /^(\d{1,2}):\d{2}/.exec(String(value));
-  return match ? Number(match[1]) : Number.NaN;
-}
-
 function safeFilename(value) {
   return value.replace(/[<>:"/\\|?*]/g, "_").trim() || "SmartSlot-timetable";
-}
-
-function sectionCode(section) {
-  const degreeCode = section.degree_name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => word[0])
-    .join("")
-    .toUpperCase();
-  return `${degreeCode}-${section.section_name}`;
 }
 
 export default function TimetablePage() {
@@ -36,7 +25,9 @@ export default function TimetablePage() {
   const [error, setError] = useState("");
   const [clash, setClash] = useState("");
   const [undoStack, setUndoStack] = useState([]);
-  const exportRef = useRef(null);
+  const scrollRef = useRef(null);
+  const dragPointRef = useRef(null);
+  const scrollFrameRef = useRef(null);
 
   useEffect(() => {
     api(`/timetables/${tid}`)
@@ -94,32 +85,8 @@ export default function TimetablePage() {
 
   async function downloadPdf() {
     try {
-      const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
-        import("jspdf"),
-        import("html2canvas"),
-      ]);
-      if (!exportRef.current) throw new Error("Timetable grid is not ready");
-      const canvas = await html2canvas(exportRef.current, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        windowWidth: exportRef.current.scrollWidth,
-      });
-      const document = new jsPDF({ orientation: "landscape", format: "a4" });
-      const margin = 8;
-      const maxWidth = document.internal.pageSize.getWidth() - margin * 2;
-      const maxHeight = document.internal.pageSize.getHeight() - margin * 2;
-      const scale = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
-      const width = canvas.width * scale;
-      const height = canvas.height * scale;
-      document.addImage(
-        canvas.toDataURL("image/png"),
-        "PNG",
-        (document.internal.pageSize.getWidth() - width) / 2,
-        (document.internal.pageSize.getHeight() - height) / 2,
-        width,
-        height
-      );
-      document.save(`${safeFilename(tt.name)}.pdf`);
+      if (!sec) throw new Error("Select a section to export");
+      await downloadTimetablePdf(tt, sec, st);
     } catch (err) {
       setError(`Could not export PDF file: ${err.message}`);
     }
@@ -127,17 +94,8 @@ export default function TimetablePage() {
 
   async function downloadImage() {
     try {
-      if (!exportRef.current) throw new Error("Timetable grid is not ready");
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(exportRef.current, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        windowWidth: exportRef.current.scrollWidth,
-      });
-      const link = document.createElement("a");
-      link.download = `${safeFilename(tt.name)}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
+      if (!sec) throw new Error("Select a section to export");
+      await downloadTimetableImage(tt, sec, st);
     } catch (err) {
       setError(`Could not export image: ${err.message}`);
     }
@@ -161,9 +119,15 @@ export default function TimetablePage() {
       setUndoStack((stack) => [...stack, {
         entry_id: entryId, day: entry.day, start: Number(entry.start),
       }]);
+      setError("");
       await reloadTimetable();
     } catch (err) {
-      if (err.message.toLowerCase().includes("clash")) setClash(err.message);
+      if (err.message.toLowerCase().includes("clash")) {
+        setClash(
+          `Clash: ${sec.label} — ${entry.code} ${entry.course} cannot be moved to `
+          + `${day} ${fmt(start)}. ${err.message.replace(/^Clash:\s*/i, "")}`
+        );
+      }
       else setError(err.message);
     }
   }
@@ -199,103 +163,124 @@ export default function TimetablePage() {
 
   function handleDrop(event, day, start) {
     event.preventDefault();
+    stopAutoScroll();
     const entryId = Number(event.dataTransfer.getData("text/plain"));
     if (entryId) moveEntry(entryId, day, start);
   }
 
+  function stopAutoScroll() {
+    dragPointRef.current = null;
+    if (scrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+    }
+  }
+
+  function autoScroll() {
+    const point = dragPointRef.current;
+    if (!point) {
+      scrollFrameRef.current = null;
+      return;
+    }
+    const edge = 72;
+    const step = 14;
+    const area = scrollRef.current;
+    if (area) {
+      const bounds = area.getBoundingClientRect();
+      if (point.x < bounds.left + edge) area.scrollLeft -= step;
+      else if (point.x > bounds.right - edge) area.scrollLeft += step;
+    }
+    if (point.y < edge) window.scrollBy(0, -step);
+    else if (point.y > window.innerHeight - edge) window.scrollBy(0, step);
+    scrollFrameRef.current = window.requestAnimationFrame(autoScroll);
+  }
+
+  function handleGridDragOver(event) {
+    event.preventDefault();
+    dragPointRef.current = { x: event.clientX, y: event.clientY };
+    if (scrollFrameRef.current === null) {
+      scrollFrameRef.current = window.requestAnimationFrame(autoScroll);
+    }
+  }
+
   const shownDays = [...WEEK];
   if (st.days.includes("Saturday")) shownDays.push("Saturday");
-  const inLunch = (h) => h >= st.lunch_start && h < st.lunch_end;
-  const visibleEntries = sec?.entries.filter((entry) => {
-    const day = String(entry.day).trim().toLowerCase();
-    const start = hourValue(entry.start);
-    const end = hourValue(entry.end);
-    return st.days.some((workingDay) => workingDay.toLowerCase() === day)
-      && start >= st.day_start && start < st.day_end && !inLunch(start)
-      && end > start && end <= st.day_end;
-  }) ?? [];
-
-  const head = [];
-  for (let h = st.day_start; h < st.day_end; h++) {
-    if (inLunch(h)) {
-      if (h === st.lunch_start)
-        head.push(<th key={h} colSpan={st.lunch_end - st.lunch_start}>
-          {f(st.lunch_start)}-{f(st.lunch_end)}</th>);
-      continue;
-    }
-    head.push(<th key={h}>{f(h)}-{f(h + 1)}</th>);
-  }
-
-  const lunchCell = (h) => (
-    <td key={"l" + h} className="lunch" rowSpan={shownDays.length}
-      colSpan={st.lunch_end - st.lunch_start}>Lunch Break</td>
+  const grid = sec ? buildTimetableGrid(sec.entries, st, shownDays) : null;
+  const dayStart = Number(st.day_start);
+  const dayEnd = Number(st.day_end);
+  const gridColumns = { gridTemplateColumns: grid?.columns ?? "90px" };
+  const originalEntries = new Map(
+    (st.original_entries || []).map((entry) => [entry.entry_id, entry])
+  );
+  const hasScheduleChanges = !!sec && (
+    undoStack.length > 0 || sec.entries.some((entry) => {
+      const original = originalEntries.get(entry.entry_id);
+      return original && (
+        original.day !== entry.day
+        || Number(original.start) !== Number(entry.start)
+        || Number(original.room_id) !== Number(entry.room_id)
+      );
+    })
   );
 
-  function offRow(d, di) {
-    const cells = [];
-    let h = st.day_start;
-    while (h < st.day_end) {
-      if (inLunch(h)) {
-        if (di === 0 && h === st.lunch_start) cells.push(lunchCell(h));
-        h++;
-        continue;
-      }
-      const s = h;
-      let run = 0;
-      while (h < st.day_end && !inLunch(h)) { run++; h++; }
-      cells.push(
-        <td key={s} colSpan={run} className="off">{s === st.day_start ? "Off" : ""}</td>
-      );
-    }
-    return <tr key={d}><td className="dayname">{d}</td>{cells}</tr>;
-  }
+  function dayRow(row) {
+    const cells = row.off
+      ? [<div key="off" className="timetable-grid-cell off"
+        style={{ gridColumn: `2 / span ${dayEnd - dayStart}` }}>Off day</div>]
+      : row.cells.map((cell) => {
+        if (cell.kind === "lunch") {
+          return (
+            <div key="lunch" className="timetable-grid-cell lunch"
+              style={{ gridColumn: `${cell.column} / span ${cell.span}` }}>
+              Break
+            </div>
+          );
+        }
+        if (cell.kind === "empty") {
+          return (
+            <div key={cell.column} className="timetable-grid-cell"
+              style={{ gridColumn: String(cell.column) }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => handleDrop(event, row.day, cell.column + dayStart - 2)} />
+          );
+        }
 
-  function dayRow(d, di) {
-    if (!st.days.includes(d)) return offRow(d, di);
-    const cells = [];
-    let h = st.day_start;
-    while (h < st.day_end) {
-      if (inLunch(h)) {
-        if (di === 0 && h === st.lunch_start) cells.push(lunchCell(h));
-        h++;
-        continue;
-      }
-      const e = sec.entries.find((x) =>
-        String(x.day).trim().toLowerCase() === d.toLowerCase()
-        && hourValue(x.start) === h
-      );
-      if (!e) {
-        const targetStart = h;
-        cells.push(<td key={h} onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => handleDrop(event, d, targetStart)}></td>);
-        h++;
-        continue;
-      }
-      const targetStart = h;
-      const start = hourValue(e.start);
-      const end = hourValue(e.end);
-      const len = end - start;
-      cells.push(
-        <td key={h} colSpan={len} className={"slot " + e.type}
-          draggable onDragStart={(event) => {
-            event.dataTransfer.setData("text/plain", String(e.entry_id));
-            event.dataTransfer.effectAllowed = "move";
-          }}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => handleDrop(event, d, targetStart)}>
-          <b>{e.code} {e.course}</b>
-          {e.teacher !== "TBA" && <div>{e.teacher}</div>}
-          <div>{e.room}</div>
-          <div className="slot-foot">
-            <span className="tag">{e.type === "lab" ? "LAB" : "LEC"}</span>
-            <span>{fmt(start)} - {fmt(end)}</span>
+        const { entry, start, end } = cell;
+        return (
+          <div key={entry.entry_id} className={`timetable-grid-cell slot ${entry.type}`}
+            style={{ gridColumn: `${cell.column} / span ${cell.span}` }}
+            draggable onDragStart={(event) => {
+              event.dataTransfer.setData("text/plain", String(entry.entry_id));
+              event.dataTransfer.effectAllowed = "move";
+            }}
+            onDragEnd={stopAutoScroll}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => handleDrop(event, row.day, start)}>
+            <b>{entry.code} {entry.course}</b>
+            {entry.teacher !== "TBA" && <div>{entry.teacher}</div>}
+            <div>{entry.room}</div>
+            <div className="slot-foot">
+              <span className="tag">{entry.type === "lab" ? "LAB" : "LEC"}</span>
+              <span>{fmt(start)} - {fmt(end)}</span>
+            </div>
           </div>
-        </td>
-      );
-      h += len;
-    }
-    return <tr key={d}><td className="dayname">{d}</td>{cells}</tr>;
+        );
+      });
+    return (
+      <div key={row.day} className="timetable-grid-row" style={gridColumns}>
+        <div className="timetable-grid-cell dayname">{row.day}</div>
+        {cells}
+      </div>
+    );
   }
+  const timeHeaders = (grid?.headers ?? []).map((header) => (
+    <div key={header.column} className="timetable-grid-cell"
+      style={{ gridColumn: `${header.column} / span ${header.span}` }}>
+      {header.start !== undefined
+        ? `${fmt(header.start)} - ${fmt(header.end)}`
+        : `${fmt(header.label)} - ${fmt(header.label + 1)}`}
+    </div>
+  ));
 
   return (
     <div>
@@ -308,14 +293,8 @@ export default function TimetablePage() {
         <button type="button" onClick={downloadPdf}>Download PDF</button>
         <button type="button" onClick={downloadImage}>Download Image</button>
         <button type="button" onClick={downloadExcel}>Download Excel</button>
-        <button type="button" title="Undo last timetable change"
-          aria-label="Undo last timetable change" disabled={!undoStack.length}
-          onClick={undoMove}>Undo</button>
-        <button type="button" disabled={!tt.settings.original_entries?.length}
-          onClick={restoreOriginal}>Original</button>
       </div>
       {error && <p className="error">{error}</p>}
-      {clash && <p role="alert" className="clash-warning">{clash}</p>}
       {location.state?.secs !== undefined && (
         <p className="muted">Generated in {location.state.secs} seconds</p>
       )}
@@ -330,26 +309,38 @@ export default function TimetablePage() {
       )}
 
       {sec && (
-        <div style={{ overflowX: "auto" }}>
-          <div ref={exportRef} className="timetable-export">
+        <div ref={scrollRef} className="timetable-scroll">
+          <div className="timetable-export">
             <h2>{tt.name}</h2>
-            <p>
-              Working days: {st.days.join(", ")} | Hours: {fmt(st.day_start)} - {fmt(st.day_end)}
-              {" | "}Lunch: {fmt(st.lunch_start)} - {fmt(st.lunch_end)}
-            </p>
             {sec.entries.length === 0 ? (
               <p className="error">This timetable has no saved class entries. Generate it again after checking the section courses and rooms.</p>
-            ) : visibleEntries.length === 0 ? (
+            ) : grid?.visibleEntryCount === 0 ? (
               <p className="error">
                 Saved classes do not match the days and hours shown in this grid.
                 Generate the timetable again to refresh it.
               </p>
             ) : (
-              <table className="grid">
-                <thead><tr><th>Day</th>{head}</tr></thead>
-                <tbody>{shownDays.map((d, i) => dayRow(d, i))}</tbody>
-              </table>
+              <>
+                <div className="timetable-grid" onDragOver={handleGridDragOver}>
+                  <div className="timetable-grid-row timetable-grid-header" style={gridColumns}>
+                    <div className="timetable-grid-cell dayname">Day</div>
+                    {timeHeaders}
+                  </div>
+                  {grid?.rows.map(dayRow)}
+                </div>
+              </>
             )}
+            {hasScheduleChanges && (
+              <div className="timetable-edit-actions">
+                {undoStack.length > 0 && (
+                  <button type="button" className="small-action"
+                    title="Undo last timetable change" onClick={undoMove}>↶ Undo</button>
+                )}
+                <button type="button" className="small-action"
+                  onClick={restoreOriginal}>Restore original</button>
+              </div>
+            )}
+            {clash && <p role="alert" className="clash-warning">{clash}</p>}
           </div>
         </div>
       )}

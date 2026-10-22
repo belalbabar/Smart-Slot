@@ -129,9 +129,9 @@ export default function TeacherDashboard() {
       {sel && (
         <div className="panel">
           <h3>{sel.name}: {sel.weekly_hours} hours / week</h3>
-          <p className="muted">
-            {sel.email || "No email"} · {sel.phone || "No phone number"}
-          </p>
+          {(sel.email || sel.phone) && (
+            <p className="muted">{[sel.email, sel.phone].filter(Boolean).join(" · ")}</p>
+          )}
           {sel.classes.length === 0 ? <p className="muted">No courses assigned yet.</p> : (
             <table>
               <thead>

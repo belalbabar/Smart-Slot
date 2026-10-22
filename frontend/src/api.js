@@ -2,14 +2,24 @@ const API = import.meta.env.VITE_API_URL;
 
 export async function api(path, options = {}) {
   const token = localStorage.getItem("token");
-  const res = await fetch(API + path, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: "Bearer " + token } : {}),
-      ...options.headers,
-    },
-  });
+  let res;
+  try {
+    res = await fetch(API + path, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: "Bearer " + token } : {}),
+        ...options.headers,
+      },
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(
+        "Could not reach the SmartSlot backend. Check that the backend server is running and the frontend API address is correct, then retry."
+      );
+    }
+    throw error;
+  }
   if (res.status === 401) {
     for (const key of ["token", "role", "username", "displayName", "teacherId"]) {
       localStorage.removeItem(key);

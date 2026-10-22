@@ -70,6 +70,13 @@ button.grey { background: #a0aec0; }
 .avatar-edit { position: absolute; right: -2px; bottom: -2px; width: 28px; height: 28px;
   padding: 0; border-radius: 50%; background: #6c8ebf; border: 2px solid #e8eef7;
   font-size: 13px; line-height: 1; }
+.avatar-menu { position: absolute; top: 92px; right: -4px; z-index: 60; min-width: 130px;
+  display: flex; flex-direction: column; background: #fff; border: 1px solid #e2e8f0;
+  border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.12); overflow: hidden; }
+.avatar-menu button { padding: 8px 10px; background: #fff; color: #2d3748;
+  text-align: left; font-size: 12px; border-radius: 0; }
+.avatar-menu button:hover { background: #edf2f7; }
+.avatar-menu button.remove-photo { color: #c0392b; }
 .avatar-name { font-weight: 600; }
 .profile-name { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .profile-name-edit { background: transparent; color: #6c8ebf; padding: 2px 4px;
@@ -105,6 +112,7 @@ td a { color: #4a6fa5; }
 .course-edit { margin: 0; }
 .clash-warning { color: #b42318; border-left: 4px solid #d92d20;
   background: #fff1f0; padding: 10px 12px; border-radius: 4px; }
+.import-success { color: #276749; }
 table.grid td.slot { cursor: grab; }
 table.grid td.slot:active { cursor: grabbing; }
 .download-menu { position: relative; }
@@ -159,6 +167,34 @@ table.grid td.off { background: #f1f3f7; color: #8a94a6; text-align: center;
 .timetable-export > p { margin: 0 0 20px; color: #111; }
 .timetable-export table.grid th,
 .timetable-export table.grid td { color: #2d3748; }
+.timetable-grid { width: max-content; min-width: 100%; color: #2d3748; }
+.timetable-grid-row { display: grid; }
+.timetable-grid-cell { min-height: 92px; padding: 10px; border: 1px solid #e2e8f0;
+  color: #2d3748; font-size: 13px; background: #fff; }
+.timetable-grid-header .timetable-grid-cell { min-height: 44px; text-align: center;
+  font-weight: 600; background: #f7fafc; }
+.timetable-grid-cell.dayname { display: flex; align-items: center; justify-content: center;
+  font-weight: 700; text-align: center; background: #f7fafc; }
+.timetable-grid-cell.slot { line-height: 1.35; cursor: grab; }
+.timetable-grid-cell.slot:active { cursor: grabbing; }
+.timetable-grid-cell.theory { background: #e3ecfa; }
+.timetable-grid-cell.lab { background: #efe8f8; }
+.timetable-grid-cell.lunch { display: flex; align-items: center; justify-content: center;
+  background: #f6f1e3; color: #74694b; font-weight: 600; }
+.timetable-grid-cell.off { display: flex; align-items: center; justify-content: center;
+  background: #f1f3f7; color: #718096; font-weight: 600; letter-spacing: 1px; }
+.timetable-scroll { overflow: auto; overscroll-behavior: contain; }
+.timetable-edit-actions { display: flex; gap: 8px; margin-top: 12px; }
+.small-action { padding: 6px 11px; font-size: 12px; border-radius: 7px; }
+.room-schedule-scroll { width: 100%; overflow-x: auto; }
+.room-schedule-grid { min-width: 1000px; table-layout: fixed; }
+.room-schedule-grid th:first-child { width: 92px; }
+.room-schedule-grid th:not(:first-child) { min-width: 120px; text-align: center; font-size: 12px; }
+.room-schedule-grid td.room-hour { height: 86px; padding: 6px; text-align: center; vertical-align: middle; }
+.room-schedule-grid td.room-hour.free { background: #f2faf5; }
+.room-schedule-grid td.room-hour.occupied { background: #fff7e8; }
+.room-class { display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.room-class strong { font-size: 12px; }
 
 @media (max-width: 700px) {
   .sidebar { width: 190px; padding: 14px; }

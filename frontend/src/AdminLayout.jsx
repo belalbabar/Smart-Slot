@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, Navigate, useNavigate } from "react-router-dom";
 import { api } from "./api";
 
@@ -13,7 +13,19 @@ export default function AdminLayout() {
   const [name, setName] = useState(localStorage.getItem("displayName") || username);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(name);
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!photoMenuOpen) return undefined;
+    function closePhotoMenu(event) {
+      if (event.target instanceof Element
+          && event.target.closest(".avatar-edit, .avatar-menu")) return;
+      setPhotoMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", closePhotoMenu);
+    return () => document.removeEventListener("pointerdown", closePhotoMenu);
+  }, [photoMenuOpen]);
 
   if (!localStorage.getItem("token")) return <Navigate to="/login" />;
   if (!isHod && role !== "timetable") return <Navigate to="/sessions" replace />;
@@ -22,6 +34,7 @@ export default function AdminLayout() {
 
   function pickPhoto(e) {
     const file = e.target.files[0];
+    e.target.value = "";
     if (!file) return;
     if (file.size > 1024 * 1024) {
       alert("Please choose an image smaller than 1 MB");
@@ -31,8 +44,15 @@ export default function AdminLayout() {
     reader.onload = () => {
       setPhoto(reader.result);
       try { localStorage.setItem(photoKey, reader.result); } catch {}
+      setPhotoMenuOpen(false);
     };
     reader.readAsDataURL(file);
+  }
+
+  function removePhoto() {
+    localStorage.removeItem(photoKey);
+    setPhoto("");
+    setPhotoMenuOpen(false);
   }
 
   async function saveDisplayName(event) {
@@ -83,8 +103,20 @@ export default function AdminLayout() {
               {photo ? <img src={photo} alt="" /> : <span>{name[0]?.toUpperCase() || "U"}</span>}
             </div>
             <button type="button" className="avatar-edit"
-              aria-label="Change profile picture"
-              onClick={() => fileRef.current.click()}>✎</button>
+              aria-label="Edit profile picture"
+              onClick={() => setPhotoMenuOpen((open) => !open)}>✎</button>
+            {photoMenuOpen && (
+              <div className="avatar-menu">
+                <button type="button" onClick={() => fileRef.current.click()}>
+                  Change photo
+                </button>
+                {photo && (
+                  <button type="button" className="remove-photo" onClick={removePhoto}>
+                    Remove photo
+                  </button>
+                )}
+              </div>
+            )}
             <input type="file" accept="image/*" hidden ref={fileRef} onChange={pickPhoto} />
           </div>
           {editingName ? (

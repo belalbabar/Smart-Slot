@@ -39,9 +39,11 @@ export default function SessionPage() {
       return;
     }
     const removeAll = toRemove.length === d.sections.length;
-    if (toRemove.length === 0) return;
+    if (toRemove.length === 0 && d.sections.length > 0) return;
     if (!window.confirm(
-      `Permanently delete ${toRemove.map((s) => `Section ${s.name}`).join(", ")}? This also deletes their courses and timetable history.`
+      d.sections.length
+        ? `Permanently delete ${toRemove.map((s) => `Section ${s.name}`).join(", ")}? This also deletes their courses and timetable history.`
+        : `Remove ${d.name} from this session?`
     )) return;
     setPendingDelete({ toRemove, removeAll, degree: d });
   };
@@ -58,7 +60,10 @@ export default function SessionPage() {
         });
       }
       if (pending.removeAll) {
-        await api(`/sessions/${id}/degrees/${pending.degree.id}`, { method: "DELETE" });
+        await api(`/sessions/${id}/degrees/${pending.degree.id}`, {
+          method: "DELETE",
+          body: JSON.stringify({ admin_username, password }),
+        });
       }
     });
   };
@@ -89,7 +94,7 @@ export default function SessionPage() {
         </tbody>
       </table>
       {pendingDelete && (
-        <HodPasswordDialog action="Delete section(s)"
+        <HodPasswordDialog action={pendingDelete.toRemove.length ? "Delete section(s)" : "Remove degree"}
           onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />
       )}
     </div>
