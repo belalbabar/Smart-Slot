@@ -119,7 +119,7 @@ export default function Users() {
         <input placeholder="Display name (if no linked teacher)"
           value={form.display_name}
           onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
-        <input type="email" required placeholder="Account email (for password reset)"
+        <input type="email" required placeholder="Account email"
           value={form.email}
           onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <select value={form.role}
