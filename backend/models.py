@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import (Column, Integer, String, Boolean, DateTime,
-                        ForeignKey, Time, Text)
+                        ForeignKey, Time, Text, Index)
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -13,7 +13,25 @@ class User(Base):
     role = Column(String, default="hod")
     teacher_id = Column(Integer, ForeignKey("teachers.id"), nullable=True)
     display_name = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    auth_version = Column(Integer, nullable=False, default=0)
     teacher = relationship("Teacher")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                      nullable=False)
+    token_hash = Column(String(64), unique=True, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_password_reset_tokens_user_id", "user_id"),
+        Index("ix_password_reset_tokens_expires_at", "expires_at"),
+    )
 
 
 class AcademicSession(Base):

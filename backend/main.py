@@ -1,4 +1,5 @@
 from typing import Literal, Optional
+import re
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from auth import (hash_password, verify_password, create_token,
 from crud_routes import router
 from session_routes import router as session_router
 from timetable_routes import router as timetable_router
+from auth_routes import router as auth_router
 
 app = FastAPI(title="SmartSlot")
 
@@ -21,11 +23,13 @@ app.add_middleware(
     ],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_private_network=True,
 )
 
 app.include_router(router)
 app.include_router(session_router)
 app.include_router(timetable_router)
+app.include_router(auth_router)
 
 class LoginData(BaseModel):
     username: str
@@ -38,16 +42,25 @@ class NewUser(BaseModel):
     role: Literal["hod", "timetable"] = "timetable"
     teacher_id: Optional[int] = None
     display_name: Optional[str] = None
+    email: str
 
 
 class UpdateUser(BaseModel):
     role: Literal["hod", "timetable"]
     teacher_id: Optional[int] = None
     display_name: Optional[str] = None
+    email: str
 
 
 class ProfileUpdate(BaseModel):
     display_name: str
+
+
+def validate_email(value: str) -> str:
+    email = value.strip().lower()
+    if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(400, "Enter a valid email address")
+    return email
 
 
 @app.get("/")
@@ -61,7 +74,7 @@ def login(data: LoginData, db: Session = Depends(get_db)):
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Wrong username or password")
     return {
-        "token": create_token(user.id),
+        "token": create_token(user.id, user.auth_version),
         "username": user.username,
         "display_name": user.display_name or (
             user.teacher.name if user.teacher else user.username
@@ -95,7 +108,8 @@ def update_profile(data: ProfileUpdate, user: User = Depends(get_current_admin),
 def list_users(db: Session = Depends(get_db),
                admin: User = Depends(get_current_hod)):
     return [{"id": u.id, "username": u.username, "role": u.role,
-             "teacher_id": u.teacher_id, "display_name": u.display_name}
+             "teacher_id": u.teacher_id, "display_name": u.display_name,
+             "email": u.email}
             for u in db.query(User).order_by(User.id).all()]
 
 
@@ -105,6 +119,7 @@ def create_user(data: NewUser, db: Session = Depends(get_db),
     username = data.username.strip()
     if len(username) < 3 or len(data.password) < 6:
         raise HTTPException(400, "Username min 3 and password min 6 characters")
+    email = validate_email(data.email)
     if db.query(User).filter(User.username == username).first():
         raise HTTPException(400, "Username already exists")
     if data.role == "timetable" and data.teacher_id is None:
@@ -118,11 +133,13 @@ def create_user(data: NewUser, db: Session = Depends(get_db),
     user = User(username=username,
                 password_hash=hash_password(data.password), role=data.role,
                 teacher_id=data.teacher_id,
-                display_name=(data.display_name or "").strip() or None)
+                display_name=(data.display_name or "").strip() or None,
+                email=email)
     db.add(user)
     db.commit()
     return {"id": user.id, "username": user.username, "role": user.role,
-            "teacher_id": user.teacher_id, "display_name": user.display_name}
+            "teacher_id": user.teacher_id, "display_name": user.display_name,
+            "email": user.email}
 
 
 @app.put("/users/{user_id}")
@@ -131,6 +148,7 @@ def update_user(user_id: int, data: UpdateUser, db: Session = Depends(get_db),
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(404, "User not found")
+    email = validate_email(data.email)
     if data.role == "timetable" and data.teacher_id is None:
         if not (data.display_name or "").strip():
             raise HTTPException(400, "Enter a display name or select a linked teacher")
@@ -148,9 +166,11 @@ def update_user(user_id: int, data: UpdateUser, db: Session = Depends(get_db),
     user.role = data.role
     user.teacher_id = data.teacher_id
     user.display_name = (data.display_name or "").strip() or None
+    user.email = email
     db.commit()
     return {"id": user.id, "username": user.username, "role": user.role,
-            "teacher_id": user.teacher_id, "display_name": user.display_name}
+            "teacher_id": user.teacher_id, "display_name": user.display_name,
+            "email": user.email}
 
 
 @app.delete("/users/{user_id}")

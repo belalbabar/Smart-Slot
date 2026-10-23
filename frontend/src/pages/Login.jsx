@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 
 export default function Login() {
@@ -36,6 +36,9 @@ export default function Login() {
           onChange={(e) => setUsername(e.target.value)} />
         <input type="password" placeholder="Password" value={password}
           onChange={(e) => setPassword(e.target.value)} />
+        <Link className="forgot-password-link" to="/forgot-password">
+          Forgot password?
+        </Link>
         {error && <p className="error">{error}</p>}
         <button type="submit">Login</button>
       </form>

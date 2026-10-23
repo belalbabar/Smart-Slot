@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 
 const emptyForm = {
-  username: "", password: "", display_name: "", role: "timetable", teacher_id: "",
+  username: "", password: "", display_name: "", email: "",
+  role: "timetable", teacher_id: "",
 };
 
 function roleName(role) {
@@ -51,6 +52,7 @@ export default function Users() {
       role: form.role,
       teacher_id: form.teacher_id ? Number(form.teacher_id) : null,
       display_name: form.display_name.trim() || null,
+      email: form.email.trim(),
     };
     if (!editId) {
       body.username = form.username;
@@ -74,6 +76,7 @@ export default function Users() {
       username: user.username,
       password: "",
       display_name: user.display_name || "",
+      email: user.email || "",
       role: ["admin", "hod"].includes(user.role) ? "hod" : "timetable",
       teacher_id: user.teacher_id ? String(user.teacher_id) : "",
     });
@@ -116,6 +119,9 @@ export default function Users() {
         <input placeholder="Display name (if no linked teacher)"
           value={form.display_name}
           onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
+        <input type="email" required placeholder="Account email (for password reset)"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <select value={form.role}
           onChange={(e) => setForm({ ...form, role: e.target.value })}>
           <option value="hod">HOD - all access</option>
@@ -135,7 +141,7 @@ export default function Users() {
 
       <table>
         <thead>
-          <tr><th>Username</th><th>Role</th><th>Linked teacher</th><th>Access</th><th></th></tr>
+          <tr><th>Username</th><th>Email</th><th>Role</th><th>Linked teacher</th><th>Access</th><th></th></tr>
         </thead>
         <tbody>
           {users.map((user) => {
@@ -143,6 +149,7 @@ export default function Users() {
             return (
               <tr key={user.id}>
                 <td>{user.username}</td>
+                <td>{user.email || "Not set"}</td>
                 <td>{roleName(user.role)}</td>
                 <td>{user.display_name || teacher?.name || "Not linked"}</td>
                 <td>{assignedArea(user.role)}</td>
@@ -168,6 +175,7 @@ export default function Users() {
           <div className="panel" key={user.id}>
             <h3>{user.display_name || teacher?.name || user.username}</h3>
             <p><b>Login:</b> {user.username}</p>
+            <p><b>Account email:</b> {user.email || "Not set"}</p>
             <p><b>Account role:</b> {roleName(user.role)}</p>
             <p><b>Assigned areas:</b> {assignedArea(user.role)}</p>
             {teacher ? (

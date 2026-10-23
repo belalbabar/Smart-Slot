@@ -28,9 +28,10 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
-def create_token(user_id: int) -> str:
+def create_token(user_id: int, auth_version: int = 0) -> str:
     payload = {
         "sub": str(user_id),
+        "ver": auth_version,
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_HOURS),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -47,6 +48,8 @@ def get_current_admin(
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if data.get("ver", 0) != user.auth_version:
+        raise HTTPException(status_code=401, detail="Session expired; sign in again")
     return user
 
 

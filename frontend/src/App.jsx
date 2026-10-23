@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { api } from "./api";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Users from "./pages/Users";
 import Sessions from "./pages/Sessions";
 import SessionPage from "./pages/SessionPage";
@@ -61,6 +63,8 @@ export default function App() {
       <AuthBootstrap>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/admin/login" element={<AdminGate />} />
 
           <Route path="/admin" element={<AdminLayout />}>

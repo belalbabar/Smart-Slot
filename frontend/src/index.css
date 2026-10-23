@@ -20,6 +20,16 @@ h3 { margin: 0 0 10px; font-size: 17px; line-height: 1.3; }
 .card { background: #fff; padding: 32px; border-radius: 12px; width: 340px;
   display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.06); }
 .back-btn { position: fixed; top: 20px; left: 20px; background: #a0aec0; }
+.forgot-password-link { align-self: flex-end; color: #4a6fa5; font-size: 13px; }
+.password-field { display: grid; gap: 6px; font-size: 13px; color: #4a5568; }
+.password-input-wrap { position: relative; display: flex; }
+.password-input-wrap input { width: 100%; padding-right: 48px; }
+.password-visibility { position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  background: transparent; color: #4a5568; padding: 4px 8px; line-height: 1; }
+.password-visibility:hover { background: #edf2f7; }
+.success-message { color: #276749; margin: 4px 0; }
+.button-link { display: inline-block; padding: 10px 16px; border-radius: 8px;
+  background: #6c8ebf; color: #fff; text-align: center; text-decoration: none; }
 
 /* Inputs and buttons */
 input { padding: 10px 12px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 14px; }
