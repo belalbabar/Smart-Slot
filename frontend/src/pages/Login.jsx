@@ -21,7 +21,7 @@ export default function Login() {
       localStorage.setItem("username", data.username);
       localStorage.setItem("displayName", data.display_name);
       localStorage.setItem("teacherId", data.teacher_id ?? "");
-      navigate("/sessions");
+      navigate(data.role === "student_affairs" ? "/student-affairs" : "/sessions");
     } catch (err) {
       setError(err.message);
     }

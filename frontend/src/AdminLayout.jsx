@@ -2,11 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, Navigate, useNavigate } from "react-router-dom";
 import { api } from "./api";
 
+const NOTIFICATION_EVENT = "student-affairs-notifications-updated";
+
 export default function AdminLayout() {
   const navigate = useNavigate();
   const fileRef = useRef(null);
   const role = localStorage.getItem("role");
   const isHod = ["admin", "hod"].includes(role);
+  const hasStudentAffairsAccess = isHod
+    || role === "student_affairs"
+    || (role === "timetable" && !!localStorage.getItem("teacherId"));
   const username = localStorage.getItem("username") || "";
   const photoKey = `profilePhoto:${username}`;
   const [photo, setPhoto] = useState(localStorage.getItem(photoKey) || "");
@@ -15,6 +20,24 @@ export default function AdminLayout() {
   const [nameDraft, setNameDraft] = useState(name);
   const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const [error, setError] = useState("");
+  const [unreadEscalationCount, setUnreadEscalationCount] = useState(0);
+  const [studentAffairsError, setStudentAffairsError] = useState("");
+
+  useEffect(() => {
+    if (!hasStudentAffairsAccess) return undefined;
+    async function loadNotifications() {
+      try {
+        const result = await api("/student-affairs/notifications");
+        setUnreadEscalationCount(result.unread_escalation_count);
+        setStudentAffairsError("");
+      } catch (err) {
+        setStudentAffairsError(err.message);
+      }
+    }
+    loadNotifications();
+    window.addEventListener(NOTIFICATION_EVENT, loadNotifications);
+    return () => window.removeEventListener(NOTIFICATION_EVENT, loadNotifications);
+  }, [hasStudentAffairsAccess]);
 
   useEffect(() => {
     if (!photoMenuOpen) return undefined;
@@ -28,9 +51,8 @@ export default function AdminLayout() {
   }, [photoMenuOpen]);
 
   if (!localStorage.getItem("token")) return <Navigate to="/login" />;
+  if (role === "student_affairs") return <Navigate to="/student-affairs" replace />;
   if (!isHod && role !== "timetable") return <Navigate to="/sessions" replace />;
-  if (isHod && sessionStorage.getItem("adminGate") !== "1")
-    return <Navigate to="/admin/login" replace />;
 
   function pickPhoto(e) {
     const file = e.target.files[0];
@@ -65,13 +87,6 @@ export default function AdminLayout() {
       });
       setName(result.display_name);
       localStorage.setItem("displayName", result.display_name);
-      const returnState = JSON.parse(
-        sessionStorage.getItem("adminReturnState") || "null"
-      );
-      if (returnState?.username === username) {
-        returnState.displayName = result.display_name;
-        sessionStorage.setItem("adminReturnState", JSON.stringify(returnState));
-      }
       setEditingName(false);
     } catch (err) {
       setError(err.message);
@@ -79,18 +94,6 @@ export default function AdminLayout() {
   }
 
   function exitAdmin() {
-    if (!isHod) {
-      navigate("/sessions", { replace: true });
-      return;
-    }
-    const returnState = JSON.parse(sessionStorage.getItem("adminReturnState") || "null");
-    for (const key of ["token", "role", "username", "displayName", "teacherId"]) {
-      const value = returnState?.[key];
-      if (value === null || value === undefined) localStorage.removeItem(key);
-      else localStorage.setItem(key, value);
-    }
-    sessionStorage.removeItem("adminReturnState");
-    sessionStorage.removeItem("adminGate");
     navigate("/sessions", { replace: true });
   }
 
@@ -144,7 +147,30 @@ export default function AdminLayout() {
           {error && <p className="error profile-error">{error}</p>}
         </div>
 
-        <NavLink to="/admin/rooms">Rooms & Labs</NavLink>
+        {isHod && (
+          <div className="module-nav">
+            <div className="admin-title">Modules</div>
+            <NavLink to="/sessions">Timetable</NavLink>
+            <NavLink to="/student-affairs" className="sa-nav-link">
+              Student Affairs
+              {unreadEscalationCount > 0 && (
+                <span className="sa-escalation-dot" aria-label="Overdue tasks need attention"
+                  title="Overdue tasks need attention" />
+              )}
+            </NavLink>
+          </div>
+        )}
+        {!isHod && <NavLink to="/admin/rooms">Rooms & Labs</NavLink>}
+        {!isHod && hasStudentAffairsAccess && (
+          <NavLink to="/student-affairs" className="sa-nav-link">
+            Student Affairs
+          </NavLink>
+        )}
+        {studentAffairsError && (
+          <p className="error sa-nav-error" role="status">
+            Student Affairs: {studentAffairsError}
+          </p>
+        )}
         {isHod && (
           <>
             <NavLink to="/admin/teachers">Teacher Dashboard</NavLink>

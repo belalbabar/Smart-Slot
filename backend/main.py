@@ -12,6 +12,7 @@ from crud_routes import router
 from session_routes import router as session_router
 from timetable_routes import router as timetable_router
 from auth_routes import router as auth_router
+from student_affairs_routes import router as student_affairs_router
 
 app = FastAPI(title="SmartSlot")
 
@@ -30,6 +31,7 @@ app.include_router(router)
 app.include_router(session_router)
 app.include_router(timetable_router)
 app.include_router(auth_router)
+app.include_router(student_affairs_router)
 
 class LoginData(BaseModel):
     username: str
@@ -39,14 +41,14 @@ class LoginData(BaseModel):
 class NewUser(BaseModel):
     username: str
     password: str
-    role: Literal["hod", "timetable"] = "timetable"
+    role: Literal["hod", "timetable", "student_affairs"] = "timetable"
     teacher_id: Optional[int] = None
     display_name: Optional[str] = None
     email: str
 
 
 class UpdateUser(BaseModel):
-    role: Literal["hod", "timetable"]
+    role: Literal["admin", "hod", "timetable", "student_affairs"]
     teacher_id: Optional[int] = None
     display_name: Optional[str] = None
     email: str
@@ -122,14 +124,16 @@ def create_user(data: NewUser, db: Session = Depends(get_db),
     email = validate_email(data.email)
     if db.query(User).filter(User.username == username).first():
         raise HTTPException(400, "Username already exists")
+    if data.role == "student_affairs" and data.teacher_id is None:
+        raise HTTPException(400, "Select a teacher profile for this Student Affairs account")
     if data.role == "timetable" and data.teacher_id is None:
         if not (data.display_name or "").strip():
             raise HTTPException(400, "Enter a display name or select a linked teacher")
     if data.teacher_id is not None and not db.get(Teacher, data.teacher_id):
         raise HTTPException(400, "Teacher not found")
-    if data.teacher_id is not None and db.query(User).filter(
-            User.teacher_id == data.teacher_id).first():
-        raise HTTPException(400, "This teacher already has a login account")
+    if data.role == "timetable" and data.teacher_id is not None and db.query(User).filter(
+            User.teacher_id == data.teacher_id, User.role == "timetable").first():
+        raise HTTPException(400, "This teacher already has a timetable login account")
     user = User(username=username,
                 password_hash=hash_password(data.password), role=data.role,
                 teacher_id=data.teacher_id,
@@ -149,17 +153,24 @@ def update_user(user_id: int, data: UpdateUser, db: Session = Depends(get_db),
     if not user:
         raise HTTPException(404, "User not found")
     email = validate_email(data.email)
+    if data.role == "student_affairs" and data.teacher_id is None:
+        raise HTTPException(400, "Select a teacher profile for this Student Affairs account")
     if data.role == "timetable" and data.teacher_id is None:
         if not (data.display_name or "").strip():
             raise HTTPException(400, "Enter a display name or select a linked teacher")
     if data.teacher_id is not None and not db.get(Teacher, data.teacher_id):
         raise HTTPException(400, "Teacher not found")
-    if data.teacher_id is not None and db.query(User).filter(
-            User.teacher_id == data.teacher_id, User.id != user_id).first():
-        raise HTTPException(400, "This teacher already has a login account")
-    if user.id == admin.id and data.role not in ("hod", "timetable"):
+    if data.role == "timetable" and data.teacher_id is not None and db.query(User).filter(
+            User.teacher_id == data.teacher_id,
+            User.role == "timetable",
+            User.id != user_id,
+    ).first():
+        raise HTTPException(400, "This teacher already has a timetable login account")
+    if user.id == admin.id and data.role not in (
+        "admin", "hod", "timetable", "student_affairs"
+    ):
         raise HTTPException(400, "Invalid account role")
-    if user.role in ("hod", "admin") and data.role == "timetable":
+    if user.role in ("hod", "admin") and data.role not in ("hod", "admin"):
         hod_count = db.query(User).filter(User.role.in_(("hod", "admin"))).count()
         if hod_count <= 1:
             raise HTTPException(400, "At least one HOD account must remain")

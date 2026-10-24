@@ -7,13 +7,14 @@ const emptyForm = {
 };
 
 function roleName(role) {
-  return ["admin", "hod"].includes(role) ? "HOD" : "Timetable";
+  if (["admin", "hod"].includes(role)) return "HOD";
+  if (role === "student_affairs") return "Student Affairs";
+  return "Timetable";
 }
 
 function assignedArea(role) {
-  return ["admin", "hod"].includes(role)
-    ? "All access"
-    : "Timetable";
+  if (["admin", "hod"].includes(role)) return "All access";
+  return role === "student_affairs" ? "Student Affairs" : "Timetable";
 }
 
 export default function Users() {
@@ -21,6 +22,9 @@ export default function Users() {
   const [teachers, setTeachers] = useState([]);
   const [workloads, setWorkloads] = useState([]);
   const [form, setForm] = useState(emptyForm);
+  const [newTeacher, setNewTeacher] = useState({ name: "", email: "", phone: "" });
+  const [addingTeacherFromDropdown, setAddingTeacherFromDropdown] = useState(false);
+  const [creatingTeacher, setCreatingTeacher] = useState(false);
   const [editId, setEditId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState("");
@@ -43,13 +47,44 @@ export default function Users() {
   function resetForm() {
     setForm(emptyForm);
     setEditId(null);
+    setAddingTeacherFromDropdown(false);
+    setNewTeacher({ name: "", email: "", phone: "" });
+  }
+
+  async function addTeacherProfile() {
+    const name = newTeacher.name.trim();
+    if (!name) {
+      setError("Enter the teacher's name.");
+      return;
+    }
+    setCreatingTeacher(true);
+    setError("");
+    try {
+      const teacher = await api("/teachers", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          email: newTeacher.email.trim() || null,
+          phone: newTeacher.phone.trim() || null,
+        }),
+      });
+      await load();
+      setForm((current) => ({ ...current, teacher_id: String(teacher.id) }));
+      setNewTeacher({ name: "", email: "", phone: "" });
+      setAddingTeacherFromDropdown(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreatingTeacher(false);
+    }
   }
 
   async function save(e) {
     e.preventDefault();
     setError("");
+    const editedUser = users.find((user) => user.id === editId);
     const body = {
-      role: form.role,
+      role: editedUser?.role === "admin" ? "admin" : form.role,
       teacher_id: form.teacher_id ? Number(form.teacher_id) : null,
       display_name: form.display_name.trim() || null,
       email: form.email.trim(),
@@ -77,7 +112,7 @@ export default function Users() {
       password: "",
       display_name: user.display_name || "",
       email: user.email || "",
-      role: ["admin", "hod"].includes(user.role) ? "hod" : "timetable",
+      role: ["admin", "hod"].includes(user.role) ? "hod" : user.role,
       teacher_id: user.teacher_id ? String(user.teacher_id) : "",
     });
     setError("");
@@ -104,8 +139,9 @@ export default function Users() {
     <div>
       <h2>Manage Users</h2>
       <p className="muted">
-        Link an existing teacher or enter a standalone display name for a timetable
-        coordinator. They sign in with the username and password you set here.
+        Student Affairs accounts must be linked to a teacher profile to create
+        tasks. If the teacher is not listed, add the profile in Teacher Dashboard
+        first. They sign in with the username and password set here.
       </p>
       <form className="row" onSubmit={save}>
         {!editId && (
@@ -123,18 +159,67 @@ export default function Users() {
           value={form.email}
           onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <select value={form.role}
-          onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          disabled={Boolean(editId && users.find((user) => user.id === editId)?.role === "admin")}
+          onChange={(e) => {
+            setForm({ ...form, role: e.target.value, teacher_id: "" });
+            setAddingTeacherFromDropdown(false);
+          }}>
           <option value="hod">HOD - all access</option>
           <option value="timetable">Timetable</option>
+          <option value="student_affairs">Student Affairs</option>
         </select>
-        <select value={form.teacher_id}
-          onChange={(e) => setForm({ ...form, teacher_id: e.target.value })}>
-          <option value="">No linked teacher</option>
-          {teachers.map((teacher) => (
-            <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
-          ))}
-        </select>
-        <button type="submit">{editId ? "Save changes" : "Add account"}</button>
+        {["timetable", "student_affairs"].includes(form.role) && (
+          <>
+            <select aria-label="Linked teacher"
+              required={form.role === "student_affairs"}
+              value={addingTeacherFromDropdown ? "__add_teacher__" : form.teacher_id}
+              onChange={(e) => {
+                if (e.target.value === "__add_teacher__") {
+                  setAddingTeacherFromDropdown(true);
+                  return;
+                }
+                setAddingTeacherFromDropdown(false);
+                setForm({ ...form, teacher_id: e.target.value });
+              }}>
+              <option value="">
+                {form.role === "student_affairs"
+                  ? "Select teacher profile (required)"
+                  : "Select teacher profile"}
+              </option>
+              {teachers.map((teacher) => (
+                <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
+              ))}
+              <option value="__add_teacher__">+ Add a new teacher profile…</option>
+            </select>
+          </>
+        )}
+        {addingTeacherFromDropdown && (
+          <div className="panel user-new-teacher">
+            <h3>Add teacher profile</h3>
+            <div className="row">
+              <input required aria-label="New teacher name" placeholder="Teacher name"
+                value={newTeacher.name}
+                onChange={(e) => setNewTeacher({ ...newTeacher, name: e.target.value })} />
+              <input aria-label="New teacher email" type="email"
+                placeholder="Teacher email (optional)" value={newTeacher.email}
+                onChange={(e) => setNewTeacher({ ...newTeacher, email: e.target.value })} />
+              <input aria-label="New teacher phone" placeholder="Phone (optional)"
+                value={newTeacher.phone}
+                onChange={(e) => setNewTeacher({ ...newTeacher, phone: e.target.value })} />
+              <button type="button" disabled={creatingTeacher || !newTeacher.name.trim()}
+                onClick={addTeacherProfile}>
+                {creatingTeacher ? "Adding..." : "Add and link teacher"}
+              </button>
+              <button type="button" className="grey"
+                onClick={() => setAddingTeacherFromDropdown(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        <button type="submit" disabled={addingTeacherFromDropdown || creatingTeacher}>
+          {editId ? "Save changes" : "Add account"}
+        </button>
         {editId && <button type="button" className="grey" onClick={resetForm}>Cancel</button>}
       </form>
       {error && <p className="error">{error}</p>}
@@ -151,7 +236,7 @@ export default function Users() {
                 <td>{user.username}</td>
                 <td>{user.email || "Not set"}</td>
                 <td>{roleName(user.role)}</td>
-                <td>{user.display_name || teacher?.name || "Not linked"}</td>
+                <td>{teacher?.name || "Not linked"}</td>
                 <td>{assignedArea(user.role)}</td>
                 <td>
                   <button type="button" onClick={() => setSelectedId(
@@ -178,6 +263,7 @@ export default function Users() {
             <p><b>Account email:</b> {user.email || "Not set"}</p>
             <p><b>Account role:</b> {roleName(user.role)}</p>
             <p><b>Assigned areas:</b> {assignedArea(user.role)}</p>
+            <p><b>Linked teacher:</b> {teacher?.name || "Not linked"}</p>
             {teacher ? (
               <>
                 <p><b>Teacher email:</b> {teacher.email || "Not provided"}</p>

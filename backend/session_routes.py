@@ -620,7 +620,8 @@ def teacher_workload(db: Session = Depends(get_db),
 @router.get("/courses")
 def list_courses(db: Session = Depends(get_db)):
     return [{"id": c.id, "code": c.code, "name": c.name, "type": c.type,
-             "credit_hours": c.credit_hours,              "weekly_pattern": sc.weekly_pattern or c.weekly_pattern,
+             "credit_hours": c.credit_hours,
+             "weekly_pattern": c.weekly_pattern,
              "lab_kind": c.lab_kind}
             for c in db.query(Course).order_by(Course.code).all()]
 

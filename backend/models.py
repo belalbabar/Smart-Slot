@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import (Column, Integer, String, Boolean, DateTime,
+from sqlalchemy import (Column, Integer, String, Boolean, DateTime, Date,
                         ForeignKey, Time, Text, Index)
 from sqlalchemy.orm import relationship
 from database import Base
@@ -31,6 +31,50 @@ class PasswordResetToken(Base):
     __table_args__ = (
         Index("ix_password_reset_tokens_user_id", "user_id"),
         Index("ix_password_reset_tokens_expires_at", "expires_at"),
+    )
+
+
+class StudentAffairsTask(Base):
+    __tablename__ = "student_affairs_tasks"
+    id = Column(Integer, primary_key=True)
+    teacher_id = Column(Integer, ForeignKey("teachers.id"), nullable=False)
+    title = Column(String(160), nullable=False)
+    complaint_details = Column(Text, nullable=False)
+    student_name = Column(String(120), nullable=False)
+    roll_number = Column(String(80), nullable=False)
+    status = Column(String(20), nullable=False, default="open")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    due_date = Column(Date, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+    resolution_note = Column(String(500), nullable=True)
+    escalated = Column(Boolean, nullable=False, default=False)
+    escalated_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
+    teacher = relationship("Teacher")
+
+    __table_args__ = (
+        Index("ix_student_affairs_tasks_teacher_id", "teacher_id"),
+        Index("ix_student_affairs_tasks_due_date", "due_date"),
+        Index("ix_student_affairs_tasks_status", "status"),
+    )
+
+
+class StudentAffairsNotification(Base):
+    __tablename__ = "student_affairs_notifications"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                      nullable=False)
+    task_id = Column(Integer, ForeignKey("student_affairs_tasks.id"),
+                      nullable=False)
+    kind = Column(String(30), nullable=False)
+    message = Column(String(500), nullable=False)
+    is_red = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    read_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_student_affairs_notifications_user_read", "user_id", "read_at"),
+        Index("ix_student_affairs_notifications_task_id", "task_id"),
     )
 
 

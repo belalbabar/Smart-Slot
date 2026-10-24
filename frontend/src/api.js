@@ -20,7 +20,7 @@ export async function api(path, options = {}) {
     }
     throw error;
   }
-  if (res.status === 401) {
+  if (res.status === 401 && !path.startsWith("/auth/login")) {
     for (const key of ["token", "role", "username", "displayName", "teacherId"]) {
       localStorage.removeItem(key);
     }

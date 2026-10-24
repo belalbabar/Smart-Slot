@@ -17,6 +17,7 @@ import AdminLayout from "./AdminLayout";
 import AdminGate from "./pages/AdminGate";
 import GeneratePage from "./pages/GeneratePage";
 import TimetablePage from "./pages/TimetablePage";
+import StudentAffairs from "./pages/StudentAffairs";
 
 function AuthBootstrap({ children }) {
   const token = localStorage.getItem("token");
@@ -54,7 +55,19 @@ function HodOnly({ children }) {
 
 function AdminHome() {
   const role = localStorage.getItem("role");
-  return <Navigate to={role === "timetable" ? "/admin/rooms" : "/admin/teachers"} replace />;
+  return <Navigate to={
+    role === "student_affairs"
+      ? "/student-affairs"
+      : role === "timetable"
+        ? "/admin/rooms"
+        : "/admin/teachers"
+  } replace />;
+}
+
+function TimetableRooms() {
+  return localStorage.getItem("role") === "timetable"
+    ? <Rooms />
+    : <Navigate to="/rooms" replace />;
 }
 
 export default function App() {
@@ -70,13 +83,14 @@ export default function App() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminHome />} />
             <Route path="teachers" element={<HodOnly><TeacherDashboard /></HodOnly>} />
-            <Route path="rooms" element={<Rooms />} />
+            <Route path="rooms" element={<TimetableRooms />} />
             <Route path="users" element={<HodOnly><Users /></HodOnly>} />
           </Route>
 
           <Route element={<Layout />}>
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/rooms" element={<Rooms />} />
+            <Route path="/student-affairs" element={<StudentAffairs />} />
             <Route path="/sessions/:id" element={<SessionPage />} />
             <Route
               path="/sessions/:id/degrees/:degreeId"
