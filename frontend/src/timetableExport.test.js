@@ -4,6 +4,7 @@ import {
   downloadTimetableImage,
   createTimetablePdf,
   sectionCode,
+  timetableHeaderLines,
 } from "./timetableExport.js";
 
 const timetable = { name: "Sample timetable" };
@@ -26,6 +27,26 @@ test("exports use the same short degree-section code across download surfaces", 
   assert.equal(sectionCode(section), "CE-A");
   const { filename } = await createTimetablePdf(timetable, section, settings);
   assert.match(filename, /CE-A\.pdf$/);
+});
+
+test("builds timetable headings from the selected section and settings", () => {
+  const lines = timetableHeaderLines(timetable, {
+    ...section,
+    degree_name: "Computer Engineering",
+    section_name: "A",
+    batch: "Fall 2024",
+  }, {
+    ...settings,
+    semester: 5,
+    effective_from: "2026-10-05",
+  });
+
+  assert.deepEqual(lines, [
+    "UNIVERSITY OF ENGINEERING AND TECHNOLOGY",
+    "DEPARTMENT OF COMPUTER ENGINEERING",
+    "Computer Engineering - A (Semester 5 - 2024 F) (Morning)",
+    "EFFECTIVE FROM 05/10/2026 (MONDAY)",
+  ]);
 });
 
 test("exports a vector PDF without converting a screenshot to PNG", async () => {

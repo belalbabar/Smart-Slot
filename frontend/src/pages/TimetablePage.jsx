@@ -6,6 +6,7 @@ import {
   downloadTimetableImage,
   downloadTimetablePdf,
   sectionCode,
+  timetableHeaderLines,
 } from "../timetableExport";
 
 const f = (h) => (h % 12 === 0 ? 12 : h % 12);
@@ -58,7 +59,12 @@ export default function TimetablePage() {
     try {
       const { default: writeExcelFile } = await import("write-excel-file/universal");
       const headers = ["Section", "Day", "Start", "End", "Course", "Type", "Teacher", "Room"];
+      const titleLines = sec
+        ? timetableHeaderLines(tt, sec, st)
+        : ["UNIVERSITY OF ENGINEERING AND TECHNOLOGY", `TIMETABLE: ${tt.name}`];
       const data = [
+        ...titleLines.map((line) => [line]),
+        headers.map(() => null),
         headers,
         ...exportRows.map((row) => [
           row.Section, row.Day, row.Start, row.End,
@@ -277,8 +283,8 @@ export default function TimetablePage() {
     <div key={header.column} className="timetable-grid-cell"
       style={{ gridColumn: `${header.column} / span ${header.span}` }}>
       {header.start !== undefined
-        ? `${fmt(header.start)} - ${fmt(header.end)}`
-        : `${fmt(header.label)} - ${fmt(header.label + 1)}`}
+        ? "Break"
+        : `${header.label}-${header.label + 1}`}
     </div>
   ));
 
@@ -289,10 +295,16 @@ export default function TimetablePage() {
           Back to generate
         </Link>
       </p>
-      <div className="row">
-        <button type="button" onClick={downloadPdf}>Download PDF</button>
-        <button type="button" onClick={downloadImage}>Download Image</button>
-        <button type="button" onClick={downloadExcel}>Download Excel</button>
+      <div className="row timetable-actions">
+        <button type="button" className="action-button" onClick={downloadPdf}>
+          Download PDF
+        </button>
+        <button type="button" className="action-button" onClick={downloadExcel}>
+          Download Excel
+        </button>
+        <button type="button" className="action-button" onClick={downloadImage}>
+          Download Image
+        </button>
       </div>
       {error && <p className="error">{error}</p>}
       {location.state?.secs !== undefined && (
@@ -311,7 +323,11 @@ export default function TimetablePage() {
       {sec && (
         <div ref={scrollRef} className="timetable-scroll">
           <div className="timetable-export">
-            <h2>{tt.name}</h2>
+            {timetableHeaderLines(tt, sec, st).map((line, index) => (
+              <div key={line} className={`timetable-title-line line-${index + 1}`}>
+                {line}
+              </div>
+            ))}
             {sec.entries.length === 0 ? (
               <p className="error">This timetable has no saved class entries. Generate it again after checking the section courses and rooms.</p>
             ) : grid?.visibleEntryCount === 0 ? (

@@ -10,9 +10,11 @@ export default function GeneratePage() {
   const navigate = useNavigate();
   const [days, setDays] = useState(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]);
   const [dayStart, setDayStart] = useState(8);
-  const [dayEnd, setDayEnd] = useState(17);
+  const [dayEnd, setDayEnd] = useState(16);
   const [lunchStart, setLunchStart] = useState(12);
   const [lunchEnd, setLunchEnd] = useState(13);
+  const [semester, setSemester] = useState("5");
+  const [effectiveFrom, setEffectiveFrom] = useState("2026-10-05");
   const [name, setName] = useState("");
   const [teachers, setTeachers] = useState([]);
   const [unav, setUnav] = useState([]);
@@ -70,6 +72,8 @@ export default function GeneratePage() {
         body: JSON.stringify({
           name, days, day_start: Number(dayStart), day_end: Number(dayEnd),
           lunch_start: Number(lunchStart), lunch_end: Number(lunchEnd),
+          semester: semester.trim(),
+          effective_from: effectiveFrom,
           unavailable: unav.map((u) => ({ teacher_id: Number(u.teacher_id), days: u.days })),
         }),
       });
@@ -106,6 +110,16 @@ export default function GeneratePage() {
           <label>End <input type="number" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} /></label>
           <label>Break from <input type="number" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} /></label>
           <label>Break to <input type="number" value={lunchEnd} onChange={(e) => setLunchEnd(e.target.value)} /></label>
+        </div>
+      </div>
+
+      <div className="panel">
+        <h3>Timetable heading</h3>
+        <div className="row">
+          <label>Semester <input type="number" min="1" max="12" value={semester}
+            onChange={(e) => setSemester(e.target.value)} /></label>
+          <label>Effective from <input type="date" value={effectiveFrom}
+            onChange={(e) => setEffectiveFrom(e.target.value)} /></label>
         </div>
       </div>
 

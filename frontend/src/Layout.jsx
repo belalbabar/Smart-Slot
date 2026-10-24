@@ -8,6 +8,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { api } from "./api";
+import NavIcon from "./NavIcon";
 
 const NOTIFICATION_EVENT = "student-affairs-notifications-updated";
 
@@ -96,10 +97,12 @@ export default function Layout() {
         {isHod && (
           <div className="module-nav">
             <div className="admin-title">Modules</div>
-            <NavLink to="/sessions">Timetable</NavLink>
-            <NavLink to="/rooms">Rooms &amp; Labs</NavLink>
+            <NavLink to="/sessions"><NavIcon name="calendar" />Timetable</NavLink>
+            <div className="module-subnav">
+              <NavLink to="/rooms"><NavIcon name="building" />Rooms &amp; Labs</NavLink>
+            </div>
             <NavLink to="/student-affairs" className="sa-nav-link">
-              Student Affairs
+              <span className="nav-label"><NavIcon name="people" />Student Affairs</span>
               {unreadEscalationCount > 0 && (
                 <span className="sa-escalation-dot" aria-label="Overdue tasks need attention"
                   title="Overdue tasks need attention" />
@@ -119,7 +122,7 @@ export default function Layout() {
         {!isHod && hasStudentAffairsAccess && (
           <div className="module-nav">
             <NavLink to="/student-affairs" className="sa-nav-link">
-              Student Affairs
+              <span className="nav-label"><NavIcon name="people" />Student Affairs</span>
             </NavLink>
             {location.pathname.startsWith("/student-affairs") && (
               <div className="sa-subnav">
@@ -146,7 +149,9 @@ export default function Layout() {
           <>
             <div className="nav-head">
               {arrow("root")}
-              <NavLink to="/sessions" end onDoubleClick={() => toggle("root")}>Sessions</NavLink>
+              <NavLink to="/sessions" end onDoubleClick={() => toggle("root")}>
+                <NavIcon name="book" />Sessions
+              </NavLink>
             </div>
 
             {isOpen("root") && tree.map((s) => (

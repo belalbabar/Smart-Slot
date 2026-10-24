@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, Navigate, useNavigate } from "react-router-dom";
 import { api } from "./api";
+import NavIcon from "./NavIcon";
 
 const NOTIFICATION_EVENT = "student-affairs-notifications-updated";
 
@@ -150,9 +151,9 @@ export default function AdminLayout() {
         {isHod && (
           <div className="module-nav">
             <div className="admin-title">Modules</div>
-            <NavLink to="/sessions">Timetable</NavLink>
+            <NavLink to="/sessions"><NavIcon name="calendar" />Timetable</NavLink>
             <NavLink to="/student-affairs" className="sa-nav-link">
-              Student Affairs
+              <span className="nav-label"><NavIcon name="people" />Student Affairs</span>
               {unreadEscalationCount > 0 && (
                 <span className="sa-escalation-dot" aria-label="Overdue tasks need attention"
                   title="Overdue tasks need attention" />
@@ -160,10 +161,12 @@ export default function AdminLayout() {
             </NavLink>
           </div>
         )}
-        {!isHod && <NavLink to="/admin/rooms">Rooms & Labs</NavLink>}
+        {!isHod && <NavLink to="/admin/rooms">
+          <NavIcon name="building" />Rooms &amp; Labs
+        </NavLink>}
         {!isHod && hasStudentAffairsAccess && (
           <NavLink to="/student-affairs" className="sa-nav-link">
-            Student Affairs
+            <span className="nav-label"><NavIcon name="people" />Student Affairs</span>
           </NavLink>
         )}
         {studentAffairsError && (
@@ -173,8 +176,12 @@ export default function AdminLayout() {
         )}
         {isHod && (
           <>
-            <NavLink to="/admin/teachers">Teacher Dashboard</NavLink>
-            <NavLink to="/admin/users">Manage Users</NavLink>
+            <NavLink to="/admin/teachers">
+              <NavIcon name="book" />Teacher Dashboard
+            </NavLink>
+            <NavLink to="/admin/users">
+              <NavIcon name="shield" />Manage Users
+            </NavLink>
           </>
         )}
 

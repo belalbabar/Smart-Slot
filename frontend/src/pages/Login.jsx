@@ -29,18 +29,31 @@ export default function Login() {
 
   return (
     <div className="login-wrap">
-      <form className="card" onSubmit={handleLogin}>
-        <h1>SmartSlot</h1>
-        <p className="muted">Admin Login</p>
-        <input placeholder="Username" value={username}
+      <form className="card login-card" onSubmit={handleLogin}>
+        <div className="login-brand">
+          <span className="login-brand-mark" aria-hidden="true">S</span>
+          <span>SmartSlot</span>
+        </div>
+        <div className="login-heading">
+          <h1>Welcome back</h1>
+          <p>Timetable and department workspace</p>
+        </div>
+        <label className="login-field">
+          Username
+          <input autoComplete="username" placeholder="Enter your username" value={username}
           onChange={(e) => setUsername(e.target.value)} />
-        <input type="password" placeholder="Password" value={password}
+        </label>
+        <label className="login-field">
+          Password
+          <input type="password" autoComplete="current-password"
+          placeholder="Enter your password" value={password}
           onChange={(e) => setPassword(e.target.value)} />
+        </label>
         <Link className="forgot-password-link" to="/forgot-password">
           Forgot password?
         </Link>
-        {error && <p className="error">{error}</p>}
-        <button type="submit">Login</button>
+        {error && <p className="error login-error" role="alert">{error}</p>}
+        <button type="submit">Sign in</button>
       </form>
     </div>
   );

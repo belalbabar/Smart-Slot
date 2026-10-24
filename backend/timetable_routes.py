@@ -1,5 +1,5 @@
 import json
-from datetime import time, datetime
+from datetime import time, datetime, date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ortools.sat.python import cp_model
@@ -38,6 +38,20 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
     de = to_int(data, "day_end", 17)
     ls = to_int(data, "lunch_start", 12)
     le = to_int(data, "lunch_end", 13)
+    effective_from = data.get("effective_from") or None
+    if effective_from:
+        try:
+            date.fromisoformat(effective_from)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "effective_from must be a valid date")
+    semester = data.get("semester") or None
+    if semester is not None:
+        try:
+            semester = int(semester)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "semester must be a number")
+        if not 1 <= semester <= 12:
+            raise HTTPException(400, "semester must be between 1 and 12")
     if not (0 <= ds < de <= 23):
         raise HTTPException(400, "Invalid day start/end time")
     hours = [h for h in range(ds, de) if not (ls <= h < le)]
@@ -198,7 +212,9 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
                    session_id=section.session_id, section_id=section_id,
                    settings=json.dumps({
                        "days": days, "day_start": ds, "day_end": de,
-                       "lunch_start": ls, "lunch_end": le}))
+                       "lunch_start": ls, "lunch_end": le,
+                       "effective_from": effective_from,
+                       "semester": semester}))
     db.add(tt)
     db.flush()
     count = 0
@@ -246,6 +262,7 @@ def get_timetable(tid: int, db: Session = Depends(get_db)):
     if not t:
         raise HTTPException(404, "Timetable not found")
     sec = db.get(Section, t.section_id) if t.section_id else None
+    session = db.get(AcademicSession, t.session_id)
     rows = (db.query(TimetableEntry, Course, Section, Degree, Room, Teacher)
             .join(SectionCourse, SectionCourse.id == TimetableEntry.section_course_id)
             .join(Course, Course.id == SectionCourse.course_id)
@@ -260,6 +277,7 @@ def get_timetable(tid: int, db: Session = Depends(get_db)):
                                       "label": f"{deg.name} - Section {s.name}",
                                       "degree_name": deg.name,
                                       "section_name": s.name,
+                                      "batch": s.batch,
                                       "entries": []})
         item["entries"].append({
             "entry_id": e.id,
@@ -277,6 +295,7 @@ def get_timetable(tid: int, db: Session = Depends(get_db)):
         t.settings = json.dumps(settings)
         db.commit()
     return {"id": t.id, "name": t.name, "session_id": t.session_id,
+            "session_name": session.name if session else "",
             "section_id": t.section_id,
             "degree_id": sec.degree_id if sec else None,
             "settings": settings,

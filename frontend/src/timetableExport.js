@@ -25,6 +25,37 @@ function hourLabel(hour) {
   return `${value}:00 ${hour < 12 ? "AM" : "PM"}`;
 }
 
+export function timetableHeaderLines(timetable, section, settings) {
+  const dateValue = settings.effective_from;
+  let effectiveDate = "EFFECTIVE DATE NOT SET";
+  if (dateValue) {
+    const [year, month, day] = dateValue.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    const weekday = date.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase();
+    effectiveDate = `EFFECTIVE FROM ${day.toString().padStart(2, "0")}/`
+      + `${month.toString().padStart(2, "0")}/${year} (${weekday})`;
+  }
+  const degree = section.degree_name || section.label.split(" - Section ")[0];
+  const sectionName = section.section_name
+    || section.label.match(/ - Section (.+)$/)?.[1]
+    || "";
+  const term = section.batch || timetable.session_name || timetable.name;
+  const academicTerm = term.replace(/\b(Fall|Spring|Summer)\s+(\d{4})\b/i,
+    (_, season, year) => `${year} ${
+      { fall: "F", spring: "S", summer: "Su" }[season.toLowerCase()]
+    }`);
+  const semester = settings.semester
+    ? `Semester ${settings.semester} - ${academicTerm}`
+    : academicTerm;
+  const shift = Number(settings.day_start) < 12 ? "Morning" : "Afternoon";
+  return [
+    "UNIVERSITY OF ENGINEERING AND TECHNOLOGY",
+    `DEPARTMENT OF ${degree.toUpperCase()}`,
+    `${degree} - ${sectionName} (${semester}) (${shift})`,
+    effectiveDate,
+  ];
+}
+
 function xml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;",
@@ -46,7 +77,7 @@ function dayRows(section, settings, days) {
 function buildSvg(timetable, section, settings, days) {
   const dayWidth = 150;
   const hourWidth = 150;
-  const titleHeight = 92;
+  const titleHeight = 142;
   const headerHeight = 56;
   const rowHeight = 140;
   const start = Number(settings.day_start);
@@ -60,8 +91,11 @@ function buildSvg(timetable, section, settings, days) {
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" fill="${fill}" stroke="#d5deea"/>`;
 
   cells.push(rect(0, 0, width, height, "#ffffff"));
-  cells.push(text(24, 38, timetable.name, 28, 600, "#172b4d"));
-  cells.push(text(24, 68, sectionCode(section), 18, 400, "#4a5568"));
+  const headings = timetableHeaderLines(timetable, section, settings);
+  cells.push(text(24, 34, headings[0], 21, 700, "#172b4d"));
+  cells.push(text(24, 60, headings[1], 18, 600, "#334155"));
+  cells.push(text(24, 86, headings[2], 16, 600, "#334155"));
+  cells.push(text(24, 112, headings[3], 14, 600, "#64748b"));
 
   const headerY = titleHeight;
   cells.push(rect(0, headerY, dayWidth, headerHeight, "#f2f5fa"));
@@ -182,19 +216,23 @@ export async function createTimetablePdf(timetable, section, settings) {
   const dayWidth = 25;
   const hourWidth = (pageWidth - margin * 2 - dayWidth) /
     (Number(settings.day_end) - Number(settings.day_start));
-  const titleY = 15;
-  const headerY = 32;
+  const titleY = 12;
+  const headerY = 46;
   const headerHeight = 11;
   const rowHeight = Math.min(26, (190 - headerY - headerHeight) / rows.length);
   const start = Number(settings.day_start);
   const end = Number(settings.day_end);
 
+  const headings = timetableHeaderLines(timetable, section, settings);
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(14);
-  pdf.text(timetable.name, margin, titleY);
+  pdf.setFontSize(11);
+  pdf.text(headings[0], margin, titleY);
   pdf.setFontSize(9);
+  pdf.text(headings[1], margin, titleY + 8);
   pdf.setFont("helvetica", "normal");
-  pdf.text(sectionCode(section), margin, titleY + 8);
+  pdf.text(headings[2], margin, titleY + 16);
+  pdf.setFontSize(8);
+  pdf.text(headings[3], margin, titleY + 24);
 
   pdf.setFillColor(242, 245, 250);
   pdf.rect(margin, headerY, dayWidth, headerHeight, "F");
