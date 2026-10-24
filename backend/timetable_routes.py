@@ -1,5 +1,5 @@
 import json
-from datetime import time, datetime, date
+from datetime import time, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ortools.sat.python import cp_model
@@ -38,12 +38,6 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
     de = to_int(data, "day_end", 17)
     ls = to_int(data, "lunch_start", 12)
     le = to_int(data, "lunch_end", 13)
-    effective_from = data.get("effective_from") or None
-    if effective_from:
-        try:
-            date.fromisoformat(effective_from)
-        except (TypeError, ValueError):
-            raise HTTPException(400, "effective_from must be a valid date")
     semester = data.get("semester") or None
     if semester is not None:
         try:
@@ -213,7 +207,6 @@ def generate(section_id: int, data: dict, db: Session = Depends(get_db)):
                    settings=json.dumps({
                        "days": days, "day_start": ds, "day_end": de,
                        "lunch_start": ls, "lunch_end": le,
-                       "effective_from": effective_from,
                        "semester": semester}))
     db.add(tt)
     db.flush()

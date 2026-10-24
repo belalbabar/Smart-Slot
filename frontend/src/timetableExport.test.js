@@ -38,14 +38,12 @@ test("builds timetable headings from the selected section and settings", () => {
   }, {
     ...settings,
     semester: 5,
-    effective_from: "2026-10-05",
   });
 
   assert.deepEqual(lines, [
     "UNIVERSITY OF ENGINEERING AND TECHNOLOGY",
     "DEPARTMENT OF COMPUTER ENGINEERING",
     "Computer Engineering - A (Semester 5 - 2024 F) (Morning)",
-    "EFFECTIVE FROM 05/10/2026 (MONDAY)",
   ]);
 });
 

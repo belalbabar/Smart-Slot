@@ -26,15 +26,6 @@ function hourLabel(hour) {
 }
 
 export function timetableHeaderLines(timetable, section, settings) {
-  const dateValue = settings.effective_from;
-  let effectiveDate = "EFFECTIVE DATE NOT SET";
-  if (dateValue) {
-    const [year, month, day] = dateValue.split("-").map(Number);
-    const date = new Date(year, month - 1, day);
-    const weekday = date.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase();
-    effectiveDate = `EFFECTIVE FROM ${day.toString().padStart(2, "0")}/`
-      + `${month.toString().padStart(2, "0")}/${year} (${weekday})`;
-  }
   const degree = section.degree_name || section.label.split(" - Section ")[0];
   const sectionName = section.section_name
     || section.label.match(/ - Section (.+)$/)?.[1]
@@ -52,7 +43,6 @@ export function timetableHeaderLines(timetable, section, settings) {
     "UNIVERSITY OF ENGINEERING AND TECHNOLOGY",
     `DEPARTMENT OF ${degree.toUpperCase()}`,
     `${degree} - ${sectionName} (${semester}) (${shift})`,
-    effectiveDate,
   ];
 }
 
@@ -217,7 +207,7 @@ export async function createTimetablePdf(timetable, section, settings) {
   const hourWidth = (pageWidth - margin * 2 - dayWidth) /
     (Number(settings.day_end) - Number(settings.day_start));
   const titleY = 12;
-  const headerY = 46;
+  const headerY = 38;
   const headerHeight = 11;
   const rowHeight = Math.min(26, (190 - headerY - headerHeight) / rows.length);
   const start = Number(settings.day_start);
@@ -231,8 +221,6 @@ export async function createTimetablePdf(timetable, section, settings) {
   pdf.text(headings[1], margin, titleY + 8);
   pdf.setFont("helvetica", "normal");
   pdf.text(headings[2], margin, titleY + 16);
-  pdf.setFontSize(8);
-  pdf.text(headings[3], margin, titleY + 24);
 
   pdf.setFillColor(242, 245, 250);
   pdf.rect(margin, headerY, dayWidth, headerHeight, "F");

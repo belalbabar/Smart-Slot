@@ -186,7 +186,7 @@ export default function AdminLayout() {
         )}
 
         <div className="admin-box">
-          <button className="grey" onClick={exitAdmin}>← Back to Timetables</button>
+          <button className="grey" onClick={exitAdmin}>← Back</button>
         </div>
       </aside>
       <main className="content">

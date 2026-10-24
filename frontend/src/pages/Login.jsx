@@ -36,7 +36,7 @@ export default function Login() {
         </div>
         <div className="login-heading">
           <h1>Welcome back</h1>
-          <p>Timetable and department workspace</p>
+          <p>Sign in to continue to your workspace.</p>
         </div>
         <label className="login-field">
           Username
@@ -54,6 +54,7 @@ export default function Login() {
         </Link>
         {error && <p className="error login-error" role="alert">{error}</p>}
         <button type="submit">Sign in</button>
+        <p className="login-footer">Timetable and department workspace</p>
       </form>
     </div>
   );
